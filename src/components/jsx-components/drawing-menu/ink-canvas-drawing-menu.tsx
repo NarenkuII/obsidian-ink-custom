@@ -9,7 +9,6 @@ import { PointerIcon } from 'src/graphics/icons/pointer-icon';
 import classNames from 'classnames';
 import { TooltipButton } from 'src/components/jsx-components/tooltip-button/tooltip-button';
 import type { InkCanvasEditor, InkTool } from 'src/ink-canvas/types';
-import { fetchLocally, saveLocally } from 'src/logic/utils/storage';
 
 //////////
 //////////
@@ -20,21 +19,12 @@ export enum tool {
 	eraser = 'eraser',
 }
 
-const ACTIVE_STROKE_COLOUR_STORAGE_KEY = 'activeStrokeColour';
 const STROKE_COLOURS = [
-	{ label: 'Black', value: 'currentColor', swatch: '#111827' },
+	{ label: 'Black or white (theme)', value: 'currentColor', swatch: 'var(--text-normal)' },
 	{ label: 'Blue', value: '#2563eb', swatch: '#2563eb' },
 	{ label: 'Red', value: '#dc2626', swatch: '#dc2626' },
 	{ label: 'Green', value: '#16a34a', swatch: '#16a34a' },
 ] as const;
-
-function getSavedStrokeColour(): string {
-	const saved = fetchLocally(ACTIVE_STROKE_COLOUR_STORAGE_KEY);
-	if (typeof saved !== 'string') return STROKE_COLOURS[0].value;
-	return STROKE_COLOURS.some((colour) => colour.value === saved)
-		? saved
-		: STROKE_COLOURS[0].value;
-}
 
 function inkToolToMenuTool(inkTool: InkTool): tool {
 	if (inkTool === 'select') return tool.select;
@@ -58,7 +48,7 @@ interface InkCanvasDrawingMenuProps {
 export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDrawingMenuProps>((props, ref) => {
 
 	const [curTool, setCurTool] = React.useState<tool>(tool.draw);
-	const [curColour, setCurColour] = React.useState<string>(() => getSavedStrokeColour());
+	const [curColour, setCurColour] = React.useState<string>('currentColor');
 
 	// Sync toolbar highlight when the canvas changes tool (e.g. cmd/ctrl temporary erase).
 	React.useEffect(() => {
@@ -68,7 +58,7 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 		const trySubscribe = (): boolean => {
 			const editor = props.getEditor();
 			if (!editor?.subscribeToolChange) return false;
-			editor.setStrokeStyle({ color: getSavedStrokeColour() });
+			editor.setStrokeStyle({ color: 'currentColor' });
 			unsubscribe = editor.subscribeToolChange((inkTool) => {
 				setCurTool(inkToolToMenuTool(inkTool));
 			});
@@ -121,7 +111,6 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 		if (!editor) return;
 		editor.setStrokeStyle({ color: colour });
 		editor.setTool('draw');
-		saveLocally(ACTIVE_STROKE_COLOUR_STORAGE_KEY, colour);
 		setCurColour(colour);
 		setCurTool(tool.draw);
 		props.onActivateTool?.('draw');
@@ -136,6 +125,7 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 			className={classNames([
 				'ink_menu-bar',
 				'ink_menu-bar_full',
+				'ink_menu-bar_canvas',
 			])}
 		>
 			{(props.showFingerDrawingToggle || props.onExpandClick) && (

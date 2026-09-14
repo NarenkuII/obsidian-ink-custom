@@ -789,7 +789,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	const handlePointerDown = useCallback((e: React.PointerEvent) => {
 		// Touch input: two-finger gestures are handled by the native touch listener.
 		// Single-finger touch is ignored unless finger drawing is active.
-		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current) return;
+		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current && toolRef.current !== 'select') return;
 		onInteractionChangeRef.current?.(true);
 
 		recordCanvasPointer(e);
@@ -889,7 +889,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	}, [tool]);  
 
 	const handlePointerMove = useCallback((e: React.PointerEvent) => {
-		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current) return;
+		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current && toolRef.current !== 'select') return;
 
 		recordCanvasPointer(e);
 
@@ -945,7 +945,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	}, [tool]);  
 
 	const handlePointerUp = useCallback((e: React.PointerEvent) => {
-		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current) return;
+		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current && toolRef.current !== 'select') return;
 		onInteractionChangeRef.current?.(false);
 
 		recordCanvasPointer(e);
@@ -987,7 +987,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	}, [tool, releasePanMomentum, applyToolChange]);  
 
 	const handlePointerCancel = useCallback((e: React.PointerEvent) => {
-		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current) return;
+		if (e.pointerType === 'touch' && !isFingerDrawingActiveRef.current && toolRef.current !== 'select') return;
 		onInteractionChangeRef.current?.(false);
 
 		recordCanvasPointer(e);
@@ -1279,7 +1279,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 				touchGestureMode={inkTouchGestureMode}
 				forwardPenToCanvas={!props.isBooxInputLocked}
 				forwardFingerToCanvas={
-					!!props.isFingerDrawingActive && !props.isBooxInputLocked
+					(!!props.isFingerDrawingActive || tool === 'select') && !props.isBooxInputLocked
 				}
 				enableStylusSideButtonTemporaryErase={isStylusSideButtonTemporaryEraseEnabled}
 				onDrawingEmbedTwoFingerGesture={
@@ -1383,7 +1383,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 								y={selectionBounds.minY - 6 / camera.zoom}
 								width={selectionBounds.width + 12 / camera.zoom}
 								height={selectionBounds.height + 12 / camera.zoom}
-								fill="none"
+								fill="rgba(0, 123, 255, 0.035)"
 								stroke="rgba(0, 123, 255, 0.8)"
 								strokeWidth={1.5 / camera.zoom}
 							/>
@@ -1397,12 +1397,29 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 									key={index}
 									cx={cx}
 									cy={cy}
-									r={3.5 / camera.zoom}
+									r={5.5 / camera.zoom}
 									fill="var(--background-primary)"
 									stroke="rgba(0, 123, 255, 0.9)"
 									strokeWidth={1.5 / camera.zoom}
 								/>
 							))}
+							<line
+								x1={(selectionBounds.minX + selectionBounds.maxX) / 2}
+								y1={selectionBounds.minY - 6 / camera.zoom}
+								x2={(selectionBounds.minX + selectionBounds.maxX) / 2}
+								y2={selectionBounds.minY - 36 / camera.zoom}
+								stroke="rgba(0, 123, 255, 0.8)"
+								strokeWidth={1.5 / camera.zoom}
+							/>
+							<circle
+								className="ink-canvas-selection-rotate-handle"
+								cx={(selectionBounds.minX + selectionBounds.maxX) / 2}
+								cy={selectionBounds.minY - 36 / camera.zoom}
+								r={6 / camera.zoom}
+								fill="rgba(0, 123, 255, 0.9)"
+								stroke="var(--background-primary)"
+								strokeWidth={2 / camera.zoom}
+							/>
 						</g>
 					)}
 

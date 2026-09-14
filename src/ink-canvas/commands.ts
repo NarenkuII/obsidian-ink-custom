@@ -91,6 +91,27 @@ export class MoveStrokesCommand implements InkCommand {
 	}
 }
 
+/** Replace transformed strokes as one undoable selection operation. */
+export class TransformStrokesCommand implements InkCommand {
+	private store: StrokeStore;
+	private previousStrokes: InkStroke[];
+	private transformedStrokes: InkStroke[];
+
+	constructor(store: StrokeStore, previousStrokes: InkStroke[], transformedStrokes: InkStroke[]) {
+		this.store = store;
+		this.previousStrokes = previousStrokes;
+		this.transformedStrokes = transformedStrokes;
+	}
+
+	apply(): void {
+		this.store.updateStrokes(this.transformedStrokes);
+	}
+
+	unapply(): void {
+		this.store.updateStrokes(this.previousStrokes);
+	}
+}
+
 /** Erase all strokes (used by the "erase all" menu action). */
 export class EraseAllCommand implements InkCommand {
 	private store: StrokeStore;

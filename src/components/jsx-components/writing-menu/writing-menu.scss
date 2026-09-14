@@ -124,6 +124,33 @@
     flex-direction: row;
 }
 
+// Current ink canvas: keep quick actions, tools, and colours in separate tracks.
+// The embed resize observer switches to compact mode before these tracks collide.
+.ink_menu-bar_canvas {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+
+    .ink_quick-menu {
+        justify-self: start;
+    }
+
+    .ink_tool-menu {
+        position: static;
+        top: auto;
+        left: auto;
+        transform: none;
+        justify-self: center;
+    }
+
+    .ink_colour-menu {
+        justify-self: end;
+        margin-right: 0;
+    }
+}
+
 .ink_colour-menu {
     gap: 6px;
 	margin-right: 8px;

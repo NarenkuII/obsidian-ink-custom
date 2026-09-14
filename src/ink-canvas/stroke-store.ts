@@ -4,7 +4,7 @@ import type { InkStroke } from './types';
 ///////////////////////////
 
 export type StrokeStoreChange =
-	| { type: 'add' | 'addMany' | 'remove' | 'updateOffsets'; ids: string[] }
+	| { type: 'add' | 'addMany' | 'remove' | 'updateOffsets' | 'updateStrokes'; ids: string[] }
 	| { type: 'clear' | 'replaceAll'; ids: [] };
 
 /** Listeners receive which strokes changed so caches can invalidate surgically. */
@@ -63,6 +63,17 @@ export class StrokeStore {
 			}
 		}
 		this.notify({ type: 'updateOffsets', ids: Array.from(offsets.keys()) });
+	}
+
+	/** Replace stroke geometry/style in place while preserving insertion order. */
+	updateStrokes(strokesArr: InkStroke[]): void {
+		const updatedIds: string[] = [];
+		for (const stroke of strokesArr) {
+			if (!this.strokes.has(stroke.id)) continue;
+			this.strokes.set(stroke.id, stroke);
+			updatedIds.push(stroke.id);
+		}
+		if (updatedIds.length > 0) this.notify({ type: 'updateStrokes', ids: updatedIds });
 	}
 
 	getById(id: string): InkStroke | undefined {

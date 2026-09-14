@@ -24,18 +24,30 @@ export interface UseDrawingEmbedToolbarCompactOptions {
 function readToolbarClusterRects(menuBarEl: Element) {
 	const leftEl = menuBarEl.querySelector('.ink_quick-menu');
 	const centerEl = menuBarEl.querySelector('.ink_tool-menu');
-	const rightEl = menuBarEl.querySelector('.ink_extended-writing-menu');
+	const rightEls = Array.from(menuBarEl.querySelectorAll('.ink_colour-menu, .ink_extended-writing-menu'));
 
 	const centerRect = centerEl?.getBoundingClientRect();
 	if (!centerRect || !isVisibleToolbarClusterRect(centerRect)) return null;
 
 	const leftRect = leftEl?.getBoundingClientRect();
-	const rightRect = rightEl?.getBoundingClientRect();
+	const visibleRightRects = rightEls
+		.map((element) => element.getBoundingClientRect())
+		.filter(isVisibleToolbarClusterRect);
+	const rightRect = visibleRightRects.length > 0
+		? {
+			left: Math.min(...visibleRightRects.map((rect) => rect.left)),
+			right: Math.max(...visibleRightRects.map((rect) => rect.right)),
+			top: Math.min(...visibleRightRects.map((rect) => rect.top)),
+			bottom: Math.max(...visibleRightRects.map((rect) => rect.bottom)),
+			width: Math.max(...visibleRightRects.map((rect) => rect.right)) - Math.min(...visibleRightRects.map((rect) => rect.left)),
+			height: Math.max(...visibleRightRects.map((rect) => rect.bottom)) - Math.min(...visibleRightRects.map((rect) => rect.top)),
+		} as DOMRect
+		: null;
 
 	return {
 		left: leftRect && isVisibleToolbarClusterRect(leftRect) ? leftRect : null,
 		center: centerRect,
-		right: rightRect && isVisibleToolbarClusterRect(rightRect) ? rightRect : null,
+		right: rightRect,
 	};
 }
 
