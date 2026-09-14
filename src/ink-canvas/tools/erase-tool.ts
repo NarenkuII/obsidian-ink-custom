@@ -1,11 +1,14 @@
 import { RemoveStrokesCommand } from '../commands';
-import { INK_STROKE_PENDING_ERASE_CLASS } from '../constants/erase-tool';
+import {
+	ERASER_COMMIT_PREVIEW_MS,
+	INK_STROKE_PENDING_ERASE_CLASS,
+} from '../constants/erase-tool';
 import type { StrokeStore } from '../stroke-store';
 import type { UndoManager } from '../undo-manager';
 import type { CameraState } from '../types';
 import type { ClientPoint } from '../utils/eraser-hit-samples';
 import { getEraserClientSamplePoints } from '../utils/eraser-hit-samples';
-import { getStrokeIdAtClientPoint } from '../utils/stroke-hit-test';
+import { getStrokeIdsAtClientPoint } from '../utils/stroke-hit-test';
 
 ///////////////////////////
 ///////////////////////////
@@ -22,6 +25,7 @@ export interface EraseToolContext {
 let erasing = false;
 let touchedStrokeIds: Set<string> = new Set();
 let lastEraseClientPoint: ClientPoint | null = null;
+const pendingRemovalStrokeIds = new Set<string>();
 
 export function eraseToolPointerDown(e: PointerEvent, ctx: EraseToolContext): void {
 	erasing = true;
@@ -46,9 +50,13 @@ export function eraseToolPointerUp(_e: PointerEvent, ctx: EraseToolContext): voi
 	touchedStrokeIds = new Set();
 
 	if (ids.length > 0) {
-		const command = new RemoveStrokesCommand(ctx.store, ids);
-		ctx.undoManager.execute(command);
-		ctx.onErase?.();
+		ids.forEach((id) => pendingRemovalStrokeIds.add(id));
+		window.setTimeout(() => {
+			const command = new RemoveStrokesCommand(ctx.store, ids);
+			ctx.undoManager.execute(command);
+			ids.forEach((id) => pendingRemovalStrokeIds.delete(id));
+			ctx.onErase?.();
+		}, ERASER_COMMIT_PREVIEW_MS);
 	}
 }
 
@@ -92,9 +100,10 @@ function hitTestEraserAtClientPoint(
 		cameraZoom,
 	);
 	for (const sample of samplePoints) {
-		const strokeId = getStrokeIdAtClientPoint(svg, sample.x, sample.y);
-		if (!strokeId) continue;
-		markStrokeForErase(svg, strokeId);
+		for (const strokeId of getStrokeIdsAtClientPoint(svg, sample.x, sample.y)) {
+			if (pendingRemovalStrokeIds.has(strokeId)) continue;
+			markStrokeForErase(svg, strokeId);
+		}
 	}
 }
 

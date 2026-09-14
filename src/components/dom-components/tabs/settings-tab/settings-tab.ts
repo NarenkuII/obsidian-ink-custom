@@ -93,6 +93,7 @@ export class MySettingsTab extends PluginSettingTab {
 		insertTldrawSvgMigrateSection(containerEl, this.plugin);
 
 		containerEl.createEl('hr');
+		insertPenSettings(containerEl, this.plugin);
 		const strokeInputToggles: ThreeWayToggleSetting<StrokeInputTreatAs>[] = [];
 		writingSectionEl = insertWritingSettings(containerEl, this.plugin, strokeInputToggles);
 		if (this.plugin.settings.writingEnabled) writingSectionEl.classList.add('ddc_ink_expanded');
@@ -166,6 +167,38 @@ export class MySettingsTab extends PluginSettingTab {
 		// Always set expanded from the latest scan — never leave a stale visible card.
 		wrapperEl.classList.toggle('ddc_ink_expanded', needsMigration);
 	}
+}
+
+function insertPenSettings(containerEl: HTMLElement, plugin: InkPlugin): void {
+	new Setting(containerEl)
+		.setClass('ddc_ink_setting')
+		.setName('Pen size')
+		.setDesc('Width of new pen strokes in writing and drawing canvases.')
+		.addSlider((slider) => {
+			slider
+				.setLimits(2, 12, 0.5)
+				.setValue(plugin.settings.penStrokeSize ?? DEFAULT_SETTINGS.penStrokeSize)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					plugin.settings.penStrokeSize = value;
+					await plugin.saveSettings();
+				});
+		});
+
+	new Setting(containerEl)
+		.setClass('ddc_ink_setting')
+		.setName('Pen stabilization')
+		.setDesc('Stabilizes new pen strokes. Higher values are smoother but follow the tip less closely.')
+		.addSlider((slider) => {
+			slider
+				.setLimits(0, 60, 5)
+				.setValue(Math.round((plugin.settings.penStabilization ?? DEFAULT_SETTINGS.penStabilization) * 100))
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					plugin.settings.penStabilization = value / 100;
+					await plugin.saveSettings();
+				});
+		});
 }
 
 function insertGettingStartedSection(containerEl: HTMLElement, plugin: InkPlugin) {

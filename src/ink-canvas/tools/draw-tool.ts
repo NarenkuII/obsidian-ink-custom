@@ -30,6 +30,7 @@ export interface DrawToolContext {
 	getCamera: () => CameraState;
 	getContainerRect: () => DOMRect;
 	getStrokeStyle: () => InkStrokeStyle;
+	getPenStabilization: () => number;
 	/** User preference: auto/pen/mouse. Used to decide whether to retroactively recompute on pointerup. */
 	getStrokeInputTreatAsPreference: () => StrokeInputTreatAs;
 	/** Resolved pen vs mouse presets and pressure handling (never `'auto'`). */
@@ -100,7 +101,7 @@ export function drawToolPointerDown(e: PointerEvent, ctx: DrawToolContext): void
 	}
 
 	const baseStyle = ctx.getStrokeStyle();
-	const style = buildInkStrokeStyleForTreatAs(baseStyle, treatAs, camera.zoom);
+	const style = buildInkStrokeStyleForTreatAs(baseStyle, treatAs, camera.zoom, ctx.getPenStabilization());
 
 	const firstPoint: InkPoint = [pagePoint.x, pagePoint.y, pressure];
 	activeStroke = {
@@ -153,6 +154,7 @@ export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 				camera: ctx.getCamera(),
 				containerRect: ctx.getContainerRect(),
 				baseStyle: ctx.getStrokeStyle(),
+				penStabilization: ctx.getPenStabilization(),
 			});
 			activeStroke.points = recomputed.points;
 			activeStroke.strokePathLength = recomputed.strokePathLength;
@@ -163,6 +165,7 @@ export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 				ctx.getStrokeStyle(),
 				ctx.getResolvedStrokeInputTreatAs(),
 				ctx.getCamera().zoom,
+				ctx.getPenStabilization(),
 			);
 		}
 	} else {
@@ -170,6 +173,7 @@ export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 			ctx.getStrokeStyle(),
 			'mouse',
 			ctx.getCamera().zoom,
+			ctx.getPenStabilization(),
 		);
 	}
 
@@ -316,13 +320,14 @@ function recomputeStrokeFromRawSamples(args: {
 	camera: CameraState;
 	containerRect: DOMRect;
 	baseStyle: InkStrokeStyle;
+	penStabilization?: number;
 }): { points: InkPoint[]; strokePathLength: number; lastSmoothedPenPressure: number; style: InkStrokeStyle } {
-	const { rawSamples, detected, camera, containerRect, baseStyle } = args;
+	const { rawSamples, detected, camera, containerRect, baseStyle, penStabilization } = args;
 	const treatAsPen = detected === 'pen';
 	const mergeThresholdPage = 1 / camera.zoom;
 	const alpha = PEN_PRESSURE_SMOOTHING_ALPHA;
 
-	const style = buildInkStrokeStyleForTreatAs(baseStyle, detected, camera.zoom);
+	const style = buildInkStrokeStyleForTreatAs(baseStyle, detected, camera.zoom, penStabilization);
 
 	const points: InkPoint[] = [];
 	let strokePathLength = 0;

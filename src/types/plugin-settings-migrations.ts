@@ -27,6 +27,14 @@ export function migrateOutdatedSettings(raw: Record<string, unknown>): PluginSet
 		settings.drawingGridEnabledByDefault = DEFAULT_PLUGIN_SETTINGS_0_5_0.drawingGridEnabledByDefault;
 	}
 
+	if (settings.penStrokeSize === undefined) {
+		settings.penStrokeSize = DEFAULT_PLUGIN_SETTINGS_0_5_0.penStrokeSize;
+	}
+
+	if (settings.penStabilization === undefined) {
+		settings.penStabilization = DEFAULT_PLUGIN_SETTINGS_0_5_0.penStabilization;
+	}
+
 	// Undo mistaken 0.6.0 settingsVersion bump from an earlier build
 	if (settings.settingsVersion === '0.6.0') {
 		settings.settingsVersion = DEFAULT_PLUGIN_SETTINGS_0_5_0.settingsVersion;

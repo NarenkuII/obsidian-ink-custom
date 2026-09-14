@@ -951,6 +951,8 @@ export function WritingEditor(props: WritingEditorProps) {
 			writingMode={true}
 			pageWidth={WRITING_PAGE_WIDTH}
 			writingBufferLines={props.plugin.settings.writingBufferLines}
+			penStrokeSize={props.plugin.settings.penStrokeSize}
+			penStabilization={props.plugin.settings.penStabilization}
 			onEditorReady={handleEditorReady}
 			onChange={handleStoreChange}
 			onInteractionChange={handleCanvasInteractionChange}

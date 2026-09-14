@@ -1,4 +1,7 @@
-import { ERASER_RING_SAMPLE_COUNT } from '../constants/erase-tool';
+import {
+	ERASER_RING_RADIUS_FACTORS,
+	ERASER_RING_SAMPLE_COUNT,
+} from '../constants/erase-tool';
 import {
 	eraserHitRadiusScreenPx,
 	eraserSweepSpacingScreenPx,
@@ -60,8 +63,11 @@ function appendRadiusPatternSamples(
 	radius: number,
 ): void {
 	add(centerX, centerY);
-	for (let ringIndex = 0; ringIndex < ERASER_RING_SAMPLE_COUNT; ringIndex++) {
-		const angle = (2 * Math.PI * ringIndex) / ERASER_RING_SAMPLE_COUNT;
-		add(centerX + radius * Math.cos(angle), centerY + radius * Math.sin(angle));
+	for (const radiusFactor of ERASER_RING_RADIUS_FACTORS) {
+		for (let ringIndex = 0; ringIndex < ERASER_RING_SAMPLE_COUNT; ringIndex++) {
+			const angle = (2 * Math.PI * ringIndex) / ERASER_RING_SAMPLE_COUNT;
+			const sampleRadius = radius * radiusFactor;
+			add(centerX + sampleRadius * Math.cos(angle), centerY + sampleRadius * Math.sin(angle));
+		}
 	}
 }

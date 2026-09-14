@@ -20,7 +20,7 @@ export const PEN_NUMERIC_STROKE_PARTIAL: Pick<
 > = {
 	thinning: 0.6,
 	smoothing: 0.2,
-	streamline: 0.1,
+	streamline: 0.15,
 	simulatePressure: false,
 };
 
@@ -48,9 +48,11 @@ export function buildInkStrokeStyleForTreatAs(
 	base: InkStrokeStyle,
 	treatAs: ResolvedStrokeInputTreatAs,
 	captureZoom: number = INK_STROKE_ZOOM_REFERENCE,
+	penStabilization: number = PEN_NUMERIC_STROKE_PARTIAL.streamline,
 ): InkStrokeStyle {
-	const numeric =
-		treatAs === 'pen' ? PEN_NUMERIC_STROKE_PARTIAL : MOUSE_NUMERIC_STROKE_PARTIAL;
+	const numeric = treatAs === 'pen'
+		? { ...PEN_NUMERIC_STROKE_PARTIAL, streamline: Math.min(0.6, Math.max(0, penStabilization)) }
+		: MOUSE_NUMERIC_STROKE_PARTIAL;
 	const size = treatAs === 'mouse' ? base.size * OPTICAL_MOUSE_TO_PEN_RATIO : base.size;
 	const zoom = clampCaptureZoom(captureZoom);
 	return {

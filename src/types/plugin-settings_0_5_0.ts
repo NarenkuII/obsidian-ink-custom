@@ -14,6 +14,8 @@ export interface PluginSettings_0_5_0 extends PluginSettings_0_4_0 {
 	gettingStartedExpanded: boolean,
 	debugLoggingEnabled: boolean,
 	dominantHand: DominantHand,
+	penStrokeSize: number,
+	penStabilization: number,
 	// Writing specific (new in 0.5.0)
 	writingBufferLines: number,
 	writingLineHeight: number,
@@ -38,6 +40,8 @@ export const DEFAULT_PLUGIN_SETTINGS_0_5_0: PluginSettings_0_5_0 = {
 	drawingSubfolder: 'Ink/Drawing',
 	debugLoggingEnabled: false,
 	dominantHand: 'right',
+	penStrokeSize: 5,
+	penStabilization: 0.15,
 	// Writing specific
 	writingEnabled: true,
 	writingStrokeLimit: 200,

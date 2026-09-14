@@ -104,6 +104,10 @@ export interface InkSvgCanvasProps {
 	onBooxEmbedGeometryChange?: () => void;
 	/** Embedded blank drawing: zoom = containerWidth / viewBox.width (starts by matching writing scale). */
 	writingAlignedZoom?: boolean;
+	/** Width used for newly captured strokes. */
+	penStrokeSize?: number;
+	/** Streamlining used for hardware-pen strokes, from 0 to 0.6. */
+	penStabilization?: number;
 }
 
 export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
@@ -157,7 +161,10 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	const undoManagerRef = useRef(new UndoManager());
 
 	const [tool, setTool] = useState<InkTool>('draw');
-	const [strokeStyle, setStrokeStyle] = useState<InkStrokeStyle>({ ...DEFAULT_STROKE_STYLE });
+	const [strokeStyle, setStrokeStyle] = useState<InkStrokeStyle>({
+		...DEFAULT_STROKE_STYLE,
+		size: props.penStrokeSize ?? DEFAULT_SETTINGS.penStrokeSize,
+	});
 	const [camera, setCameraState] = useState<CameraState>({ x: 0, y: 0, zoom: 1 });
 	const [gridEnabled, setGridEnabledState] = useState(
 		props.initialSnapshot?.gridEnabled ?? (writingMode ? false : DEFAULT_SETTINGS.drawingGridEnabledByDefault),
@@ -211,6 +218,14 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	}, []);
 	const strokeStyleRef = useRef(strokeStyle);
 	strokeStyleRef.current = strokeStyle;
+	useEffect(() => {
+		const size = props.penStrokeSize ?? DEFAULT_SETTINGS.penStrokeSize;
+		setStrokeStyle((prev) => {
+			const next = { ...prev, size };
+			strokeStyleRef.current = next;
+			return next;
+		});
+	}, [props.penStrokeSize]);
 	const selectedIdsRef = useRef(selectedIds);
 	selectedIdsRef.current = selectedIds;
 
@@ -600,6 +615,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		getCamera: () => cameraRef.current,
 		getContainerRect,
 		getStrokeStyle: () => ({ ...strokeStyleRef.current }),
+		getPenStabilization: () => props.penStabilization ?? DEFAULT_SETTINGS.penStabilization,
 		getStrokeInputTreatAsPreference: () => strokeInputTreatAsPreferenceRef.current,
 		getResolvedStrokeInputTreatAs: () => resolvedStrokeInputTreatAsRef.current,
 		getLiveStrokePath: () => liveStrokeRef.current,

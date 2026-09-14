@@ -816,6 +816,8 @@ export function DrawingEditor(props: DrawingEditorProps) {
 		>
 			<InkSvgCanvas
 				initialSnapshot={initialSnapshot}
+				penStrokeSize={getGlobals().plugin.settings.penStrokeSize}
+				penStabilization={getGlobals().plugin.settings.penStabilization}
 				onEditorReady={handleEditorReady}
 				onChange={handleStoreChange}
 				onInteractionChange={handleCanvasInteractionChange}
