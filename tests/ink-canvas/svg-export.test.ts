@@ -42,6 +42,17 @@ describe('svg-export', () => {
 		expect(svg).not.toContain('fill="currentColor"');
 	});
 
+	test('renderStrokesToSvg preserves a supported per-stroke colour', () => {
+		const colouredStroke: InkStroke = {
+			...sampleStroke,
+			style: { ...sampleStroke.style, color: '#2563eb' },
+		};
+		const svg = renderStrokesToSvg([colouredStroke], emptySnapshot);
+		expect(svg).toContain('fill="#2563eb"');
+		expect(svg).toContain('class="ink-type-stroke ink-color-custom"');
+		expect(svg).not.toContain(`class="${INK_SVG_STROKE_PATH_CLASS}"`);
+	});
+
 	test('renderStrokesToSvg uses finite fallback bounds for an empty canvas', () => {
 		const svg = renderStrokesToSvg([], emptySnapshot);
 		expect(svg).toContain('viewBox="0 0 1 1"');

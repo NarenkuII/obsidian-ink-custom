@@ -67,8 +67,17 @@ export function renderWritingStrokesToSvg(
 }
 
 
-function buildStrokePathMarkup(d: string, offsetX: number, offsetY: number): string {
-	const pathAttrs = `d="${d}" fill="${DEFAULT_CONTENT_COLOUR_PRIMARY_STROKE}" class="${INK_SVG_STROKE_PATH_CLASS}"`;
+function resolveStrokeExportColour(colour: string): string {
+	if (colour === 'currentColor') return DEFAULT_CONTENT_COLOUR_PRIMARY_STROKE;
+	if (/^#[0-9a-f]{6}$/i.test(colour)) return colour;
+	return DEFAULT_CONTENT_COLOUR_PRIMARY_STROKE;
+}
+
+function buildStrokePathMarkup(d: string, offsetX: number, offsetY: number, colour: string): string {
+	const pathClass = colour === 'currentColor'
+		? INK_SVG_STROKE_PATH_CLASS
+		: 'ink-type-stroke ink-color-custom';
+	const pathAttrs = `d="${d}" fill="${resolveStrokeExportColour(colour)}" class="${pathClass}"`;
 	const hasOffset = offsetX !== 0 || offsetY !== 0;
 	if (hasOffset) {
 		return `<g transform="translate(${offsetX},${offsetY})"><path ${pathAttrs} /></g>\n`;
@@ -130,7 +139,12 @@ function renderStrokePathsAndBounds(strokes: InkStroke[]): {
 		if (strokeMinY < minY) minY = strokeMinY;
 		if (strokeMaxX > maxX) maxX = strokeMaxX;
 		if (strokeMaxY > maxY) maxY = strokeMaxY;
-		pathsMarkup += buildStrokePathMarkup(rendered.pathD, stroke.offset.x, stroke.offset.y);
+		pathsMarkup += buildStrokePathMarkup(
+			rendered.pathD,
+			stroke.offset.x,
+			stroke.offset.y,
+			stroke.style.color,
+		);
 	}
 
 	return {
