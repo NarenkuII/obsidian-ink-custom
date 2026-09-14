@@ -1,65 +1,14 @@
 import esbuild from "esbuild";
 import process from "process";
-import path from 'node:path';
-import { builtinModules, createRequire } from 'node:module';
+import { builtinModules } from 'node:module';
 import { sassPlugin } from 'esbuild-sass-plugin'
+import { copy } from 'esbuild-plugin-copy';
 import svg from 'esbuild-plugin-svg';
 
 
 // import renamePlugin from "./rename-plugin";
 import fs from 'fs';
 import { execSync } from 'child_process';
-
-const requireFromProject = createRequire(import.meta.url);
-
-function resolveLocalPath(base) {
-	const candidates = [
-		base,
-		...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.scss', '.css', '.svg'].map((extension) => base + extension),
-		...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].map((extension) => path.join(base, `index${extension}`)),
-	];
-	return candidates.find((candidate) => fs.existsSync(candidate));
-}
-
-function resolveSourceImport(specifier) {
-	return resolveLocalPath(path.resolve('src', specifier.slice('src/'.length)));
-}
-
-// Keep resolution inside the checkout. This also makes builds work in restricted
-// environments where walking every parent directory is intentionally blocked.
-const localModuleResolverPlugin = () => ({
-	name: 'local-module-resolver',
-	setup(build) {
-		build.onResolve({ filter: /^(data:|https?:)/ }, (args) => ({ path: args.path, external: true }));
-		build.onResolve({ filter: /^src\// }, (args) => {
-			const resolved = resolveSourceImport(args.path);
-			return resolved ? { path: resolved } : null;
-		});
-		build.onResolve({ filter: /^\./ }, (args) => {
-			const baseDir = args.resolveDir || path.dirname(args.importer);
-			const base = path.resolve(baseDir, args.path);
-			const resolved = resolveLocalPath(base);
-			if (resolved) return { path: resolved };
-			try {
-				return { path: requireFromProject.resolve(base) };
-			} catch {
-				console.warn(`[esbuild] unresolved relative module: ${args.path} imported by ${args.importer}`);
-				return null;
-			}
-		});
-		build.onResolve({ filter: /^[^./]/ }, (args) => {
-			if (args.path.startsWith('node:')) return { path: args.path, external: true };
-			if (args.path === 'obsidian' || args.path === 'electron') return { path: args.path, external: true };
-			try {
-				return { path: requireFromProject.resolve(args.path, { paths: [process.cwd()] }) };
-			} catch {
-				return {
-					errors: [{ text: `Could not resolve local module "${args.path}" imported by ${args.importer}` }],
-				};
-			}
-		});
-	},
-});
 
 function detectBuildHostLanIpv4() {
 	if (process.env.INK_DEBUG_SKIP_LAN_DISCOVERY === '1') return '';
@@ -120,18 +69,6 @@ const copyManifestPlugin = () => ({
 		});
 	},
 });
-
-const copyStaticPlugin = () => ({
-	name: 'copy-static-plugin',
-	setup(build) {
-		build.onEnd(() => {
-			if (!fs.existsSync('./src/static')) return;
-			fs.cpSync('./src/static', './dist', { recursive: true });
-		});
-	},
-});
-
-
 
 /**
  * Runs before any bundled plugin module (tldraw, main imports).
@@ -274,8 +211,6 @@ const watch = buildMode === undefined;
 const emulateMobile = process.env.INK_EMULATE_MOBILE === 'true';
 
 esbuild.build({
-	absWorkingDir: process.cwd(),
-	tsconfig: path.resolve('tsconfig.json'),
 	banner: {
 		js: banner,
 	},
@@ -302,7 +237,7 @@ esbuild.build({
 	format: 'cjs',
 	watch: watch,
 	target: 'es2020',
-	logLevel: process.env.ESBUILD_LOG_LEVEL ?? "info",
+	logLevel: "info",
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,
 	outdir: './dist',
@@ -316,12 +251,17 @@ esbuild.build({
 	},
 	// assetNames: "./assets/[name]",
 	plugins: [
-		localModuleResolverPlugin(),
 		sassPlugin({
 			filter: /.(s[ac]ss|css)$/,
 		}),
 		svg(),
-		copyStaticPlugin(),
+		copy({
+			resolveFrom: 'cwd',	// Returns name of current working directory
+			assets: {
+				from: ['./src/static/**/*'],
+				to: ['./dist'],
+			},
+		}),
 
 		// Enables manifest.json to live in root as that's what obsidian expects in a repository, and this copies it to dist
 		copyManifestPlugin(),
