@@ -1221,6 +1221,10 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	///////////////////////////
 
 	const strokes = storeRef.current.getAll();
+	const selectedStrokes = strokes.filter((stroke) => selectedIds.has(stroke.id));
+	const selectionBounds = selectedStrokes.length > 0
+		? computeStrokesBounds(selectedStrokes)
+		: null;
 
 	const cameraTransform = `scale(${camera.zoom}) translate(${camera.x}, ${camera.y})`;
 
@@ -1372,6 +1376,35 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 							/>
 						) : null
 					))}
+					{selectionBounds && (
+						<g className="ink-canvas-selection-frame" pointerEvents="none">
+							<rect
+								x={selectionBounds.minX - 6 / camera.zoom}
+								y={selectionBounds.minY - 6 / camera.zoom}
+								width={selectionBounds.width + 12 / camera.zoom}
+								height={selectionBounds.height + 12 / camera.zoom}
+								fill="none"
+								stroke="rgba(0, 123, 255, 0.8)"
+								strokeWidth={1.5 / camera.zoom}
+							/>
+							{[
+								[selectionBounds.minX - 6 / camera.zoom, selectionBounds.minY - 6 / camera.zoom],
+								[selectionBounds.maxX + 6 / camera.zoom, selectionBounds.minY - 6 / camera.zoom],
+								[selectionBounds.minX - 6 / camera.zoom, selectionBounds.maxY + 6 / camera.zoom],
+								[selectionBounds.maxX + 6 / camera.zoom, selectionBounds.maxY + 6 / camera.zoom],
+							].map(([cx, cy], index) => (
+								<circle
+									key={index}
+									cx={cx}
+									cy={cy}
+									r={3.5 / camera.zoom}
+									fill="var(--background-primary)"
+									stroke="rgba(0, 123, 255, 0.9)"
+									strokeWidth={1.5 / camera.zoom}
+								/>
+							))}
+						</g>
+					)}
 
 					{/* Live stroke (in-progress, drawn imperatively) */}
 					<path

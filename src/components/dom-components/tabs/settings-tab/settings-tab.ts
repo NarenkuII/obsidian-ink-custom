@@ -93,7 +93,6 @@ export class MySettingsTab extends PluginSettingTab {
 		insertTldrawSvgMigrateSection(containerEl, this.plugin);
 
 		containerEl.createEl('hr');
-		insertPenSettings(containerEl, this.plugin);
 		const strokeInputToggles: ThreeWayToggleSetting<StrokeInputTreatAs>[] = [];
 		writingSectionEl = insertWritingSettings(containerEl, this.plugin, strokeInputToggles);
 		if (this.plugin.settings.writingEnabled) writingSectionEl.classList.add('ddc_ink_expanded');
@@ -666,6 +665,7 @@ function insertDrawingSettings(
 	const contentEl = sectionEl.createDiv('ddc_ink_controls-content');
 
 	strokeInputToggles.push(insertStrokeInputTreatAsSetting(contentEl, 'inkDrawing'));
+	insertPenSettings(contentEl, plugin);
 
 	new Setting(contentEl)
 		.setClass('ddc_ink_setting')
@@ -741,6 +741,7 @@ function insertWritingSettings(
 	const contentEl = sectionEl.createDiv('ddc_ink_controls-content');
 
 	strokeInputToggles.push(insertStrokeInputTreatAsSetting(contentEl, 'inkWriting'));
+	insertPenSettings(contentEl, plugin);
 
 	new Setting(contentEl)
 		.setClass('ddc_ink_setting')
