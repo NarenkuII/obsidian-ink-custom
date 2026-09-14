@@ -84,7 +84,7 @@
 
 .theme-dark {
     .ddc_ink_drawing-embed-preview {
-        path { fill: rgb(242, 242, 242); }
+        path:not(.ink-color-custom) { fill: rgb(242, 242, 242); }
 
         .ddc_ink_drawing-placeholder {
             path { stroke: rgb(242, 242, 242) !important; }
@@ -99,7 +99,7 @@
 
 .theme-light {
     .ddc_ink_drawing-embed-preview {
-        path { fill: rgb(29, 29, 29); }
+        path:not(.ink-color-custom) { fill: rgb(29, 29, 29); }
         
         .ddc_ink_drawing-placeholder {
             path { stroke: rgb(29, 29, 29) !important; }

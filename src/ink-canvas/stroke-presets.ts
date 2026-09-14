@@ -7,7 +7,7 @@ import {
 } from './stroke-zoom-scale';
 
 /**
- * Pen @ 1× — `streamline: 0` for a faithful, pen-following stroke. Live preview and the committed
+ * Pen @ 1× — light streamlining steadies handwriting without adding noticeable lag. Live preview and the committed
  * stroke render the same `points` through the same `getStroke(points, toStrokeOptions(style))` call,
  * so this value applies to both equally (WYSIWYG) — see `ink-canvas-live-drawing.md`.
  * At zoom-**out**, `streamline` lerps toward the zoom-out target
@@ -19,8 +19,8 @@ export const PEN_NUMERIC_STROKE_PARTIAL: Pick<
 	'thinning' | 'smoothing' | 'streamline' | 'simulatePressure'
 > = {
 	thinning: 0.6,
-	smoothing: 0.1,
-	streamline: 0,
+	smoothing: 0.2,
+	streamline: 0.1,
 	simulatePressure: false,
 };
 

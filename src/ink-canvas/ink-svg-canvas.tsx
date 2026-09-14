@@ -519,7 +519,11 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 
 			getStrokeStyle: () => ({ ...strokeStyleRef.current }),
 			setStrokeStyle: (partial: Partial<InkStrokeStyle>) => {
-				setStrokeStyle(prev => ({ ...prev, ...partial }));
+				setStrokeStyle(prev => {
+					const next = { ...prev, ...partial };
+					strokeStyleRef.current = next;
+					return next;
+				});
 			},
 
 			getCamera: () => ({ ...cameraRef.current }),
