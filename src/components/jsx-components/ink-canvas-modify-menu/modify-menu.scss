@@ -16,6 +16,11 @@
             height: 1.5em !important;
         }
 
+		.ink_modify-symbol {
+			font-size: 1.45em;
+			line-height: 1;
+		}
+
         &:disabled {
             visibility: hidden;
         }

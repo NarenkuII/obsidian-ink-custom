@@ -10,6 +10,7 @@ import type { ResolvedStrokeInputTreatAs, StrokeInputTreatAs } from 'src/logic/d
 import type { CameraState, InkPoint, InkStroke, InkStrokeStyle } from '../types';
 import { toStrokeOptions } from '../types';
 import { buildInkStrokeStyleForTreatAs } from '../stroke-presets';
+import { recognizeInkShape } from '../shape-recognition';
 import {
 	normalizePointerPenPressureForCapture,
 	PEN_HOVER_PRESSURE_EPSILON,
@@ -31,6 +32,7 @@ export interface DrawToolContext {
 	getContainerRect: () => DOMRect;
 	getStrokeStyle: () => InkStrokeStyle;
 	getPenStabilization: () => number;
+	getShapeRecognitionEnabled: () => boolean;
 	/** User preference: auto/pen/mouse. Used to decide whether to retroactively recompute on pointerup. */
 	getStrokeInputTreatAsPreference: () => StrokeInputTreatAs;
 	/** Resolved pen vs mouse presets and pressure handling (never `'auto'`). */
@@ -58,6 +60,7 @@ interface ActiveStroke {
 	/** `timeStamp` of the last committed (appended) point — used for slow-draw trail commits. */
 	lastCommittedPointAtMs: number;
 	rawSamples: RawStrokeSample[];
+	lastMeaningfulMoveAtMs: number;
 }
 
 /** When the pen creeps slowly away from the anchor but stays near the tip, append instead of replacing. */
@@ -120,6 +123,7 @@ export function drawToolPointerDown(e: PointerEvent, ctx: DrawToolContext): void
 				isPointerUpLiftSample: false,
 			},
 		],
+		lastMeaningfulMoveAtMs: e.timeStamp,
 	};
 
 	updateLiveStrokePath(ctx);
@@ -175,6 +179,12 @@ export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 			ctx.getCamera().zoom,
 			ctx.getPenStabilization(),
 		);
+	}
+
+	const heldAtEndMs = e.timeStamp - activeStroke.lastMeaningfulMoveAtMs;
+	if (ctx.getShapeRecognitionEnabled() && heldAtEndMs >= 350) {
+		const recognized = recognizeInkShape(activeStroke.points);
+		if (recognized) activeStroke.points = recognized.points;
 	}
 
 	const stroke: InkStroke = {
@@ -248,6 +258,13 @@ function appendDrawSamplesFromPointerEvent(
 		// Exclude that lift sample from auto-detection so a constant-pressure mouse stroke
 		// remains classified as mouse.
 		const isPointerUpLiftSample = options.forceCommitFinalPoint && isLastSample;
+		const previousTip = activeStroke.points[activeStroke.points.length - 1];
+		if (
+			!isPointerUpLiftSample
+			&& Math.hypot(pagePoint.x - previousTip[0], pagePoint.y - previousTip[1]) >= 1 / camera.zoom
+		) {
+			activeStroke.lastMeaningfulMoveAtMs = e.timeStamp + i;
+		}
 		activeStroke.rawSamples.push({
 			clientX: sample.clientX,
 			clientY: sample.clientY,

@@ -35,6 +35,14 @@ export function migrateOutdatedSettings(raw: Record<string, unknown>): PluginSet
 		settings.penStabilization = DEFAULT_PLUGIN_SETTINGS_0_5_0.penStabilization;
 	}
 
+	if (settings.wholeStrokeEraser === undefined) {
+		settings.wholeStrokeEraser = DEFAULT_PLUGIN_SETTINGS_0_5_0.wholeStrokeEraser;
+	}
+
+	if (settings.shapeRecognitionEnabled === undefined) {
+		settings.shapeRecognitionEnabled = DEFAULT_PLUGIN_SETTINGS_0_5_0.shapeRecognitionEnabled;
+	}
+
 	// Undo mistaken 0.6.0 settingsVersion bump from an earlier build
 	if (settings.settingsVersion === '0.6.0') {
 		settings.settingsVersion = DEFAULT_PLUGIN_SETTINGS_0_5_0.settingsVersion;

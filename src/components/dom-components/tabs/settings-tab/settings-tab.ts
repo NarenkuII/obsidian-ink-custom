@@ -198,6 +198,32 @@ function insertPenSettings(containerEl: HTMLElement, plugin: InkPlugin): void {
 					await plugin.saveSettings();
 				});
 		});
+
+	new Setting(containerEl)
+		.setClass('ddc_ink_setting')
+		.setName('Whole-stroke eraser')
+		.setDesc('When enabled, touching a stroke erases it entirely. Disable for precise partial erasing.')
+		.addToggle((toggle) => {
+			toggle
+				.setValue(plugin.settings.wholeStrokeEraser ?? DEFAULT_SETTINGS.wholeStrokeEraser)
+				.onChange(async (value) => {
+					plugin.settings.wholeStrokeEraser = value;
+					await plugin.saveSettings();
+				});
+		});
+
+	new Setting(containerEl)
+		.setClass('ddc_ink_setting')
+		.setName('Shape recognition')
+		.setDesc('Hold briefly at the end of a line or closed shape to straighten it locally.')
+		.addToggle((toggle) => {
+			toggle
+				.setValue(plugin.settings.shapeRecognitionEnabled ?? DEFAULT_SETTINGS.shapeRecognitionEnabled)
+				.onChange(async (value) => {
+					plugin.settings.shapeRecognitionEnabled = value;
+					await plugin.saveSettings();
+				});
+		});
 }
 
 function insertGettingStartedSection(containerEl: HTMLElement, plugin: InkPlugin) {

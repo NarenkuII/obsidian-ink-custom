@@ -14,7 +14,7 @@ import {
 } from './stroke-viewport-culling';
 import { cropWritingStrokeHeightInvitingly } from 'src/components/formats/current/utils/tldraw-helpers';
 import { WRITING_LINE_HEIGHT, WRITING_PAGE_WIDTH } from 'src/constants';
-import { AddStrokeCommand, EraseAllCommand, RemoveStrokesCommand } from './commands';
+import { AddImagesCommand, AddStrokeCommand, AddStrokesCommand, EraseAllCommand, RemoveImagesCommand, RemoveStrokesCommand } from './commands';
 import { drawToolPointerDown, drawToolPointerMove, drawToolPointerUp, drawToolPointerCancel } from './tools/draw-tool';
 import { eraseToolPointerDown, eraseToolPointerMove, eraseToolPointerUp, eraseToolPointerCancel } from './tools/erase-tool';
 import { selectToolPointerDown, selectToolPointerMove, selectToolPointerUp, selectToolPointerCancel } from './tools/select-tool';
@@ -33,12 +33,21 @@ import {
 } from './utils/stylus-eraser-pointer';
 import { DEFAULT_SETTINGS } from 'src/types/plugin-settings';
 import { DEFAULT_STROKE_STYLE } from './types';
-import type { InkTool, InkStrokeStyle, CameraState, InkCanvasSnapshot, InkCanvasEditor, InkStroke } from './types';
+import type { InkTool, InkStrokeStyle, CameraState, InkCanvasSnapshot, InkCanvasEditor, InkImage, InkStroke } from './types';
 import type { DrawToolContext } from './tools/draw-tool';
 import type { EraseToolContext } from './tools/erase-tool';
 import type { SelectToolContext } from './tools/select-tool';
 import { InkAdaptiveGrid, INK_GRID_BOOX_ZOOM_FADE_SCALE } from './ink-adaptive-grid';
 import { getRenderedStrokeData } from './rendered-stroke-cache';
+import { copyInkImages, copyInkStrokes, createPastedInkImages, createPastedInkStrokes, duplicateInkImages, duplicateInkStrokes } from './selection-clipboard';
+import { ImageStore } from './image-store';
+import {
+	imageSelectPointerCancel,
+	imageSelectPointerDown,
+	imageSelectPointerMove,
+	imageSelectPointerUp,
+	type ImageSelectToolContext,
+} from './tools/image-select-tool';
 
 type LastCanvasPointerState = {
 	clientX: number;
@@ -108,6 +117,10 @@ export interface InkSvgCanvasProps {
 	penStrokeSize?: number;
 	/** Streamlining used for hardware-pen strokes, from 0 to 0.6. */
 	penStabilization?: number;
+	/** Whole-stroke erase is the default; false enables precise partial erasing. */
+	wholeStrokeEraser?: boolean;
+	/** Hold at the end of a gesture to recognize basic geometric shapes. */
+	shapeRecognitionEnabled?: boolean;
 }
 
 export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
@@ -141,8 +154,10 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		const contentHeight = strokes.length > 0
 			? computeApproxContentMaxY(strokes)
 			: 0;
-		contentMaxYRef.current = contentHeight;
-		return cropWritingStrokeHeightInvitingly(contentHeight, writingBufferLines, writingLineHeight);
+		const imageHeight = Math.max(0, ...(props.initialSnapshot?.images ?? []).map((image) => image.y + image.height));
+		const maxContentHeight = Math.max(contentHeight, imageHeight);
+		contentMaxYRef.current = maxContentHeight;
+		return cropWritingStrokeHeightInvitingly(maxContentHeight, writingBufferLines, writingLineHeight);
 	}
 
 	const pageHeightRef = useRef(computeInitialPageHeight());
@@ -159,6 +174,11 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	}
 
 	const undoManagerRef = useRef(new UndoManager());
+	const imageStoreRef = useRef<ImageStore>(null!);
+	if (!imageStoreRef.current) {
+		imageStoreRef.current = new ImageStore();
+		imageStoreRef.current.replaceAll(props.initialSnapshot?.images ?? []);
+	}
 
 	const [tool, setTool] = useState<InkTool>('draw');
 	const [strokeStyle, setStrokeStyle] = useState<InkStrokeStyle>({
@@ -170,6 +190,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		props.initialSnapshot?.gridEnabled ?? (writingMode ? false : DEFAULT_SETTINGS.drawingGridEnabledByDefault),
 	);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+	const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
 	const [, forceRender] = useState(0);
 	// Bumped on note/window scroll so render-time culling re-evaluates without touching StrokeStore.
 	const [viewportRevision, setViewportRevision] = useState(0);
@@ -228,6 +249,16 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	}, [props.penStrokeSize]);
 	const selectedIdsRef = useRef(selectedIds);
 	selectedIdsRef.current = selectedIds;
+	const selectedImageIdsRef = useRef(selectedImageIds);
+	selectedImageIdsRef.current = selectedImageIds;
+	const wholeStrokeEraserRef = useRef(props.wholeStrokeEraser ?? true);
+	const shapeRecognitionEnabledRef = useRef(props.shapeRecognitionEnabled ?? true);
+	useEffect(() => {
+		wholeStrokeEraserRef.current = props.wholeStrokeEraser ?? true;
+	}, [props.wholeStrokeEraser]);
+	useEffect(() => {
+		shapeRecognitionEnabledRef.current = props.shapeRecognitionEnabled ?? true;
+	}, [props.shapeRecognitionEnabled]);
 
 	const panMomentumRef = useRef<PanMomentumController | null>(null);
 	useEffect(() => {
@@ -304,7 +335,8 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 
 		const strokes = props.initialSnapshot?.strokes;
 		const hasStrokes = (strokes?.length ?? 0) > 0;
-		if (!hasStrokes) {
+		const initialImages = props.initialSnapshot?.images ?? [];
+		if (!hasStrokes && initialImages.length === 0) {
 			const container = containerRef.current;
 			if (!container) return;
 			const zoom = container.clientWidth / pageWidth;
@@ -320,7 +352,12 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		if (!container) return;
 		const rect = container.getBoundingClientRect();
 		if (rect.width === 0 || rect.height === 0) return;
-		const bounds = computeStrokesBounds(strokes!);
+		const strokeBounds = hasStrokes ? computeStrokesBounds(strokes!) : null;
+		const minX = Math.min(strokeBounds?.minX ?? Infinity, ...initialImages.map((image) => image.x));
+		const minY = Math.min(strokeBounds?.minY ?? Infinity, ...initialImages.map((image) => image.y));
+		const maxX = Math.max(strokeBounds?.maxX ?? -Infinity, ...initialImages.map((image) => image.x + image.width));
+		const maxY = Math.max(strokeBounds?.maxY ?? -Infinity, ...initialImages.map((image) => image.y + image.height));
+		const bounds = { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 		if (bounds.width <= 0 || bounds.height <= 0) return;
 		const fittedCamera = fitBoundsToViewport(rect.width, rect.height, {
 			x: bounds.minX,
@@ -369,7 +406,21 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 				onEmbedUndoStackPushRef.current?.();
 			}
 		});
-		return () => { unsubStore(); unsubUndo(); };
+		const unsubImages = imageStoreRef.current.subscribe(() => {
+			forceRender((revision) => revision + 1);
+			props.onChange?.();
+			if (writingMode) {
+				const strokeMaxY = computeApproxContentMaxY(storeRef.current.getAll());
+				const imageMaxY = Math.max(0, ...imageStoreRef.current.getAll().map((image) => image.y + image.height));
+				contentMaxYRef.current = Math.max(strokeMaxY, imageMaxY);
+				props.onPageHeightChange?.(cropWritingStrokeHeightInvitingly(
+					contentMaxYRef.current,
+					writingBufferLines,
+					props.initialSnapshot?.writingLineHeight ?? WRITING_LINE_HEIGHT,
+				));
+			}
+		});
+		return () => { unsubStore(); unsubUndo(); unsubImages(); };
 	}, []);  
 
 	function invalidateStrokeCaches(change: StrokeStoreChange): void {
@@ -554,17 +605,94 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 			setGridEnabled: (enabled: boolean) => setGridEnabledHandlerRef.current(enabled),
 
 			getSelectedStrokeIds: () => new Set(selectedIdsRef.current),
+			getSelectedImageIds: () => new Set(selectedImageIdsRef.current),
 			deleteSelectedStrokes: () => {
 				const ids = Array.from(selectedIdsRef.current);
-				if (ids.length === 0) return;
-				const cmd = new RemoveStrokesCommand(storeRef.current, ids);
-				undoManagerRef.current.execute(cmd);
+				const imageIds = Array.from(selectedImageIdsRef.current);
+				if (ids.length > 0) undoManagerRef.current.execute(new RemoveStrokesCommand(storeRef.current, ids));
+				if (imageIds.length > 0) undoManagerRef.current.execute(new RemoveImagesCommand(imageStoreRef.current, imageIds));
+				if (ids.length > 0) setSelectedIds(new Set());
+				if (imageIds.length > 0) setSelectedImageIds(new Set());
+			},
+			copySelectedStrokes: () => {
+				const selected = Array.from(selectedIdsRef.current)
+					.map((id) => storeRef.current.getById(id))
+					.filter((stroke): stroke is InkStroke => stroke !== undefined);
+				if (selected.length > 0) return copyInkStrokes(selected);
+				const selectedImages = Array.from(selectedImageIdsRef.current)
+					.map((id) => imageStoreRef.current.getById(id))
+					.filter((image): image is InkImage => image !== undefined);
+				return copyInkImages(selectedImages);
+			},
+			pasteCopiedStrokes: () => {
+				const pasted = createPastedInkStrokes();
+				if (pasted.length > 0) {
+					undoManagerRef.current.execute(new AddStrokesCommand(storeRef.current, pasted));
+					setSelectedIds(new Set(pasted.map((stroke) => stroke.id)));
+					setSelectedImageIds(new Set());
+					return true;
+				}
+				const pastedImages = createPastedInkImages();
+				if (pastedImages.length === 0) return false;
+				undoManagerRef.current.execute(new AddImagesCommand(imageStoreRef.current, pastedImages));
+				setSelectedImageIds(new Set(pastedImages.map((image) => image.id)));
 				setSelectedIds(new Set());
+				return true;
+			},
+			duplicateSelectedStrokes: () => {
+				const selected = Array.from(selectedIdsRef.current)
+					.map((id) => storeRef.current.getById(id))
+					.filter((stroke): stroke is InkStroke => stroke !== undefined);
+				const duplicated = duplicateInkStrokes(selected);
+				if (duplicated.length > 0) {
+					undoManagerRef.current.execute(new AddStrokesCommand(storeRef.current, duplicated));
+					setSelectedIds(new Set(duplicated.map((stroke) => stroke.id)));
+					return true;
+				}
+				const selectedImages = Array.from(selectedImageIdsRef.current)
+					.map((id) => imageStoreRef.current.getById(id))
+					.filter((image): image is InkImage => image !== undefined);
+				const duplicatedImages = duplicateInkImages(selectedImages);
+				if (duplicatedImages.length === 0) return false;
+				undoManagerRef.current.execute(new AddImagesCommand(imageStoreRef.current, duplicatedImages));
+				setSelectedImageIds(new Set(duplicatedImages.map((image) => image.id)));
+				return true;
+			},
+			addImage: (dataUrl: string, naturalWidth: number, naturalHeight: number) => {
+				const rect = containerRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 800, 600);
+				const camera = cameraRef.current;
+				const viewportWidth = Math.max(1, rect.width / camera.zoom);
+				const viewportHeight = Math.max(1, rect.height / camera.zoom);
+				const scale = Math.min(1, viewportWidth * 0.72 / naturalWidth, viewportHeight * 0.72 / naturalHeight);
+				const width = naturalWidth * scale;
+				const height = naturalHeight * scale;
+				const image: InkImage = {
+					id: `image_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+					dataUrl,
+					x: -camera.x + (viewportWidth - width) / 2,
+					y: -camera.y + (viewportHeight - height) / 2,
+					width,
+					height,
+					rotation: 0,
+				};
+				undoManagerRef.current.execute(new AddImagesCommand(imageStoreRef.current, [image]));
+				setSelectedImageIds(new Set([image.id]));
+				setSelectedIds(new Set());
+				applyToolChange('select');
+			},
+			isWholeStrokeEraserEnabled: () => wholeStrokeEraserRef.current,
+			setWholeStrokeEraserEnabled: (enabled: boolean) => {
+				wholeStrokeEraserRef.current = enabled;
+			},
+			isShapeRecognitionEnabled: () => shapeRecognitionEnabledRef.current,
+			setShapeRecognitionEnabled: (enabled: boolean) => {
+				shapeRecognitionEnabledRef.current = enabled;
 			},
 
 			getSnapshot: (): InkCanvasSnapshot => ({
 				version: 1,
 				strokes: storeRef.current.getAll(),
+				images: imageStoreRef.current.getAll(),
 				gridEnabled: gridEnabledRef.current,
 				...(writingMode ? { writingLineHeight } : {}),
 			}),
@@ -616,6 +744,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		getContainerRect,
 		getStrokeStyle: () => ({ ...strokeStyleRef.current }),
 		getPenStabilization: () => props.penStabilization ?? DEFAULT_SETTINGS.penStabilization,
+		getShapeRecognitionEnabled: () => shapeRecognitionEnabledRef.current,
 		getStrokeInputTreatAsPreference: () => strokeInputTreatAsPreferenceRef.current,
 		getResolvedStrokeInputTreatAs: () => resolvedStrokeInputTreatAsRef.current,
 		getLiveStrokePath: () => liveStrokeRef.current,
@@ -630,6 +759,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		getCamera: () => cameraRef.current,
 		getContainerRect,
 		getSvgElement: () => svgRef.current,
+		getWholeStrokeEraser: () => wholeStrokeEraserRef.current,
 	};
 
 	const selectCtx: SelectToolContext = {
@@ -639,7 +769,21 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		getContainerRect,
 		getSvgElement: () => svgRef.current,
 		getSelectedStrokeIds: () => selectedIdsRef.current,
-		setSelectedStrokeIds: (ids: Set<string>) => setSelectedIds(ids),
+		setSelectedStrokeIds: (ids: Set<string>) => {
+			setSelectedIds(ids);
+			if (ids.size > 0) setSelectedImageIds(new Set());
+		},
+	};
+
+	const imageSelectCtx: ImageSelectToolContext = {
+		store: imageStoreRef.current,
+		undoManager: undoManagerRef.current,
+		getCamera: () => cameraRef.current,
+		getContainerRect,
+		getSvgElement: () => svgRef.current,
+		getSelectedImageIds: () => selectedImageIdsRef.current,
+		setSelectedImageIds: (ids: Set<string>) => setSelectedImageIds(ids),
+		clearStrokeSelection: () => setSelectedIds(new Set()),
 	};
 
 
@@ -882,7 +1026,12 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		if (!isBooxInputLockedRef.current) {
 			if (toolRef.current === 'draw') drawToolPointerDown(e.nativeEvent, drawCtx);
 			if (toolRef.current === 'erase') eraseToolPointerDown(e.nativeEvent, eraseCtx);
-			if (toolRef.current === 'select') selectToolPointerDown(e.nativeEvent, selectCtx);
+			if (toolRef.current === 'select') {
+				if (!imageSelectPointerDown(e.nativeEvent, imageSelectCtx)) {
+					setSelectedImageIds(new Set());
+					selectToolPointerDown(e.nativeEvent, selectCtx);
+				}
+			}
 		}
 
 		(e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -940,7 +1089,9 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		if (!isBooxInputLockedRef.current) {
 			if (toolRef.current === 'draw') drawToolPointerMove(e.nativeEvent, drawCtx);
 			if (toolRef.current === 'erase') eraseToolPointerMove(e.nativeEvent, eraseCtx);
-			if (toolRef.current === 'select') selectToolPointerMove(e.nativeEvent, selectCtx);
+			if (toolRef.current === 'select' && !imageSelectPointerMove(e.nativeEvent, imageSelectCtx)) {
+				selectToolPointerMove(e.nativeEvent, selectCtx);
+			}
 		}
 	}, [tool]);  
 
@@ -972,7 +1123,9 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		if (!isBooxInputLockedRef.current) {
 			if (toolRef.current === 'draw') drawToolPointerUp(e.nativeEvent, drawCtx);
 			if (toolRef.current === 'erase') eraseToolPointerUp(e.nativeEvent, eraseCtx);
-			if (toolRef.current === 'select') selectToolPointerUp(e.nativeEvent, selectCtx);
+			if (toolRef.current === 'select' && !imageSelectPointerUp(imageSelectCtx)) {
+				selectToolPointerUp(e.nativeEvent, selectCtx);
+			}
 		}
 
 		if (temporaryEraseSourceRef.current === 'stylusEraser' && isStylusEraserPointerDown(e.nativeEvent)) {
@@ -1013,7 +1166,9 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		if (!isBooxInputLockedRef.current) {
 			if (toolRef.current === 'draw') drawToolPointerCancel(e.nativeEvent, drawCtx);
 			if (toolRef.current === 'erase') eraseToolPointerCancel(e.nativeEvent, eraseCtx);
-			if (toolRef.current === 'select') selectToolPointerCancel(e.nativeEvent, selectCtx);
+			if (toolRef.current === 'select' && !imageSelectPointerCancel(imageSelectCtx)) {
+				selectToolPointerCancel(e.nativeEvent, selectCtx);
+			}
 		}
 
 		if (isTemporaryEraseModeRef.current) {
@@ -1216,11 +1371,80 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		};
 	}, []);
 
+	// Selection clipboard shortcuts are scoped to the canvas under the pointer.
+	useEffect(() => {
+		const handleSelectionShortcut = (e: KeyboardEvent) => {
+			if (!isPointerOverCanvasRef.current) return;
+			const target = e.target as HTMLElement | null;
+			if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+			if (e.key === 'Delete' || e.key === 'Backspace') {
+				const strokeIds = Array.from(selectedIdsRef.current);
+				const imageIds = Array.from(selectedImageIdsRef.current);
+				if (strokeIds.length === 0 && imageIds.length === 0) return;
+				if (strokeIds.length > 0) undoManagerRef.current.execute(new RemoveStrokesCommand(storeRef.current, strokeIds));
+				if (imageIds.length > 0) undoManagerRef.current.execute(new RemoveImagesCommand(imageStoreRef.current, imageIds));
+				setSelectedIds(new Set());
+				setSelectedImageIds(new Set());
+				e.preventDefault();
+				return;
+			}
+			if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+			const key = e.key.toLowerCase();
+			if (key === 'c') {
+				const selected = Array.from(selectedIdsRef.current)
+					.map((id) => storeRef.current.getById(id))
+					.filter((stroke): stroke is InkStroke => stroke !== undefined);
+				const copied = selected.length > 0
+					? copyInkStrokes(selected)
+					: copyInkImages(Array.from(selectedImageIdsRef.current)
+						.map((id) => imageStoreRef.current.getById(id))
+						.filter((image): image is InkImage => image !== undefined));
+				if (copied) e.preventDefault();
+			} else if (key === 'v') {
+				const pasted = createPastedInkStrokes();
+				if (pasted.length > 0) {
+					undoManagerRef.current.execute(new AddStrokesCommand(storeRef.current, pasted));
+					setSelectedIds(new Set(pasted.map((stroke) => stroke.id)));
+					setSelectedImageIds(new Set());
+				} else {
+					const images = createPastedInkImages();
+					if (images.length === 0) return;
+					undoManagerRef.current.execute(new AddImagesCommand(imageStoreRef.current, images));
+					setSelectedImageIds(new Set(images.map((image) => image.id)));
+					setSelectedIds(new Set());
+				}
+				e.preventDefault();
+			} else if (key === 'd') {
+				const selected = Array.from(selectedIdsRef.current)
+					.map((id) => storeRef.current.getById(id))
+					.filter((stroke): stroke is InkStroke => stroke !== undefined);
+				const duplicated = duplicateInkStrokes(selected);
+				if (duplicated.length > 0) {
+					undoManagerRef.current.execute(new AddStrokesCommand(storeRef.current, duplicated));
+					setSelectedIds(new Set(duplicated.map((stroke) => stroke.id)));
+				} else {
+					const selectedImages = Array.from(selectedImageIdsRef.current)
+						.map((id) => imageStoreRef.current.getById(id))
+						.filter((image): image is InkImage => image !== undefined);
+					const images = duplicateInkImages(selectedImages);
+					if (images.length === 0) return;
+					undoManagerRef.current.execute(new AddImagesCommand(imageStoreRef.current, images));
+					setSelectedImageIds(new Set(images.map((image) => image.id)));
+				}
+				e.preventDefault();
+			}
+		};
+		window.addEventListener('keydown', handleSelectionShortcut, true);
+		return () => window.removeEventListener('keydown', handleSelectionShortcut, true);
+	}, []);
+
 
 	// Render strokes
 	///////////////////////////
 
 	const strokes = storeRef.current.getAll();
+	const images = imageStoreRef.current.getAll();
+	const selectedImage = images.find((image) => selectedImageIds.has(image.id));
 	const selectedStrokes = strokes.filter((stroke) => selectedIds.has(stroke.id));
 	const selectionBounds = selectedStrokes.length > 0
 		? computeStrokesBounds(selectedStrokes)
@@ -1365,6 +1589,49 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 						}
 						return lines;
 					})()}
+					{/* Images sit below handwriting so screenshots can be annotated. */}
+					{images.map((image) => (
+						<g
+							key={image.id}
+							data-ink-image-group
+							data-ink-image-id={image.id}
+							transform={`translate(${image.x} ${image.y}) rotate(${image.rotation} ${image.width / 2} ${image.height / 2})`}
+						>
+							<image
+								data-ink-image-id={image.id}
+								href={image.dataUrl}
+								x={0}
+								y={0}
+								width={image.width}
+								height={image.height}
+								preserveAspectRatio='none'
+								pointerEvents='all'
+							/>
+						</g>
+					))}
+					{selectedImage && (
+						<g
+							className='ink-canvas-image-selection-frame'
+							pointerEvents='none'
+							transform={`translate(${selectedImage.x} ${selectedImage.y}) rotate(${selectedImage.rotation} ${selectedImage.width / 2} ${selectedImage.height / 2})`}
+						>
+							<rect
+								className='ink-canvas-image-selection-border'
+								x={0}
+								y={0}
+								width={selectedImage.width}
+								height={selectedImage.height}
+								fill='rgba(0, 123, 255, 0.025)'
+								stroke='rgba(0, 123, 255, 0.9)'
+								strokeWidth={1.5 / camera.zoom}
+							/>
+							{[[0, 0], [selectedImage.width, 0], [0, selectedImage.height], [selectedImage.width, selectedImage.height]].map(([cx, cy], index) => (
+								<circle className='ink-canvas-image-corner' key={index} cx={cx} cy={cy} r={6 / camera.zoom} fill='var(--background-primary)' stroke='rgba(0, 123, 255, 0.95)' strokeWidth={1.5 / camera.zoom} />
+							))}
+							<line className='ink-canvas-image-rotate-line' x1={selectedImage.width / 2} y1={0} x2={selectedImage.width / 2} y2={-34 / camera.zoom} stroke='rgba(0, 123, 255, 0.9)' strokeWidth={1.5 / camera.zoom} />
+							<circle className='ink-canvas-image-rotate-handle' cx={selectedImage.width / 2} cy={-34 / camera.zoom} r={6 / camera.zoom} fill='var(--background-primary)' stroke='rgba(0, 123, 255, 0.95)' strokeWidth={1.5 / camera.zoom} />
+						</g>
+					)}
 					{/* Committed strokes — store keeps all; only visible (or selected) mount as SVG */}
 					{strokes.map(stroke => (
 						isStrokeVisibleInViewport(stroke) ? (

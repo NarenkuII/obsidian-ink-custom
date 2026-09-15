@@ -953,6 +953,8 @@ export function WritingEditor(props: WritingEditorProps) {
 			writingBufferLines={props.plugin.settings.writingBufferLines}
 			penStrokeSize={props.plugin.settings.penStrokeSize}
 			penStabilization={props.plugin.settings.penStabilization}
+			wholeStrokeEraser={props.plugin.settings.wholeStrokeEraser}
+			shapeRecognitionEnabled={props.plugin.settings.shapeRecognitionEnabled}
 			onEditorReady={handleEditorReady}
 			onChange={handleStoreChange}
 			onInteractionChange={handleCanvasInteractionChange}
@@ -1031,7 +1033,7 @@ export function WritingEditor(props: WritingEditorProps) {
 					onFingerDrawingToggle={() => setIsFingerDrawingActive((active) => !active)}
 					embedId={props.embedded && props.embedId ? props.embedId : undefined}
 					workspaceLeafId={props.embedded && props.workspaceLeafId ? props.workspaceLeafId : undefined}
-					plugin={props.embedded ? props.plugin : undefined}
+					plugin={props.plugin}
 				/>
 				{props.embedded && props.extendedMenu && (
 					<ExtendedWritingMenu

@@ -818,6 +818,8 @@ export function DrawingEditor(props: DrawingEditorProps) {
 				initialSnapshot={initialSnapshot}
 				penStrokeSize={getGlobals().plugin.settings.penStrokeSize}
 				penStabilization={getGlobals().plugin.settings.penStabilization}
+				wholeStrokeEraser={getGlobals().plugin.settings.wholeStrokeEraser}
+				shapeRecognitionEnabled={getGlobals().plugin.settings.shapeRecognitionEnabled}
 				onEditorReady={handleEditorReady}
 				onChange={handleStoreChange}
 				onInteractionChange={handleCanvasInteractionChange}

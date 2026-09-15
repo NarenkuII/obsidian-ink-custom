@@ -1,6 +1,23 @@
 # Ink
 A plugin for [Obsidian](https://obsidian.md) that adds the ability to hand write or draw with a stylus between paragraphs in your notes.
 
+> This branch is a private personal customization maintained by NarenkuII. The original plugin and copyright belong to Dale de Silva. Because the upstream project uses CC BY-NC-ND 4.0, do not publish or redistribute this modified build without the original author's permission.
+
+## Narenku custom build
+
+This build keeps the `ink` plugin ID so existing notes, settings, and SVG files remain compatible.
+
+- Pen colours: theme black/white, blue, red, and green. The selected colour remains visible in locked previews.
+- Pen tuning: configurable size and stabilization, pressure smoothing, and improved small-dot handling.
+- Selection: drag from inside the frame, large touch targets, uniform corner scaling, rotation, and finger support.
+- Clipboard: select strokes or an image, then use `Ctrl/Cmd+C` and `Ctrl/Cmd+V`; `Ctrl/Cmd+D` or the duplicate button makes an offset copy.
+- Image annotation: import a screenshot or photo with the image button. It is stored below the ink, then can be moved, scaled, rotated, duplicated, or deleted.
+- Shape recognition: hold the pointer briefly at the end of a line or closed shape. Lines, rectangles, ellipses, triangles, and common single-stroke arrows are corrected locally. Undo removes the recognized result.
+- Eraser modes: whole-stroke erasing is enabled by default. Toggle the eraser-mode button for precise partial erasing; both modes support undo.
+- Mobile layout: toolbar clusters switch to a compact layout before controls overlap on narrow iPad or phone canvases.
+
+Imported images are resized to at most 2048 pixels and embedded in the Ink SVG. This keeps files portable across Windows, iPadOS, and Android, but image-heavy notes can still increase Git repository size.
+
 Hand write or draw directly between paragraphs in your notes using a digital pen, stylus, or Apple pencil. Useful for handwriting, sketches, scribbles, or even math equations and scientific notation. Runs on the tldraw framework and drawing provides an infinite canvas.
 
 ## 🎥 Demo

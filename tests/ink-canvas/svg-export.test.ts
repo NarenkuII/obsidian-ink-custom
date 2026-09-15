@@ -59,6 +59,26 @@ describe('svg-export', () => {
 		expect(svg).not.toMatch(/Infinity|NaN/);
 	});
 
+	test('renderStrokesToSvg persists imported images below strokes', () => {
+		const snapshot: InkCanvasSnapshot = {
+			...emptySnapshot,
+			images: [{
+				id: 'image-1',
+				dataUrl: 'data:image/png;base64,AAAA',
+				x: 10,
+				y: 20,
+				width: 200,
+				height: 100,
+				rotation: 15,
+			}],
+		};
+		const svg = renderStrokesToSvg([], snapshot);
+		expect(svg).toContain('class="ink-type-image"');
+		expect(svg).toContain('href="data:image/png;base64,AAAA"');
+		expect(svg).toContain('rotate(15 100 50)');
+		expect(svg).toContain('viewBox="-6 4 232 132"');
+	});
+
 	test('renderStrokesToSvg wraps offset strokes in translate group', () => {
 		const offsetStroke: InkStroke = {
 			...sampleStroke,

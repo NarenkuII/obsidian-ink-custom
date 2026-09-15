@@ -27,6 +27,7 @@ export const InkCanvasModifyMenu = React.forwardRef<HTMLDivElement, InkCanvasMod
 
 	const [canUndo, setCanUndo] = React.useState<boolean>(false);
 	const [canRedo, setCanRedo] = React.useState<boolean>(false);
+	const [canDuplicate, setCanDuplicate] = React.useState<boolean>(false);
 
 	// Poll the editor for undo/redo state since the ink-canvas UndoManager
 	// notifies via listeners but React state needs explicit updates.
@@ -36,6 +37,7 @@ export const InkCanvasModifyMenu = React.forwardRef<HTMLDivElement, InkCanvasMod
 			if (!editor) return;
 			setCanUndo(editor.canUndo());
 			setCanRedo(editor.canRedo());
+			setCanDuplicate(editor.getSelectedStrokeIds().size > 0 || editor.getSelectedImageIds().size > 0);
 		}, 200);
 
 		return () => window.clearInterval(intervalId);
@@ -85,6 +87,12 @@ export const InkCanvasModifyMenu = React.forwardRef<HTMLDivElement, InkCanvasMod
 		props.onStoreChange();
 	}
 
+	function duplicateSelection() {
+		const editor = props.getEditor();
+		if (!editor?.duplicateSelectedStrokes()) return;
+		props.onStoreChange();
+	}
+
 	///////////
 	///////////
 
@@ -110,6 +118,13 @@ export const InkCanvasModifyMenu = React.forwardRef<HTMLDivElement, InkCanvasMod
 					disabled={!canUndo}
 				>
 					<UndoIcon />
+				</TooltipButton>
+				<TooltipButton
+					tooltip='Duplicate selection'
+					onClick={duplicateSelection}
+					disabled={!canDuplicate}
+				>
+					<span className='ink_modify-symbol' aria-hidden='true'>⧉</span>
 				</TooltipButton>
 			</div>
 		</div>

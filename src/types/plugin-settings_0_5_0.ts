@@ -16,6 +16,8 @@ export interface PluginSettings_0_5_0 extends PluginSettings_0_4_0 {
 	dominantHand: DominantHand,
 	penStrokeSize: number,
 	penStabilization: number,
+	wholeStrokeEraser: boolean,
+	shapeRecognitionEnabled: boolean,
 	// Writing specific (new in 0.5.0)
 	writingBufferLines: number,
 	writingLineHeight: number,
@@ -42,6 +44,8 @@ export const DEFAULT_PLUGIN_SETTINGS_0_5_0: PluginSettings_0_5_0 = {
 	dominantHand: 'right',
 	penStrokeSize: 5,
 	penStabilization: 0.15,
+	wholeStrokeEraser: true,
+	shapeRecognitionEnabled: true,
 	// Writing specific
 	writingEnabled: true,
 	writingStrokeLimit: 200,

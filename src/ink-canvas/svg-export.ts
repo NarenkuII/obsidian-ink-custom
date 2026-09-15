@@ -5,7 +5,7 @@ import {
 	INK_SVG_WRITING_LINE_CLASS,
 } from 'src/default-content-colours';
 import { INK_CANVAS_FORMAT_VERSION, WRITING_LINE_HEIGHT, WRITING_MIN_PAGE_HEIGHT } from 'src/constants';
-import type { InkStroke, InkCanvasSnapshot } from './types';
+import type { InkImage, InkStroke, InkCanvasSnapshot } from './types';
 import { getRenderedStrokeData } from './rendered-stroke-cache';
 ///////////////////////////
 ///////////////////////////
@@ -20,12 +20,13 @@ export function renderStrokesToSvg(
 	snapshotJson: InkCanvasSnapshot,
 	padding: number = 16,
 ): string {
-	if (strokes.length === 0) {
+	const images = snapshotJson.images ?? [];
+	if (strokes.length === 0 && images.length === 0) {
 		return buildSvgString('', '0 0 1 1', snapshotJson);
 	}
 
 	const rendered = renderStrokePathsAndBounds(strokes);
-	const bounds = rendered.bounds;
+	const bounds = combinedContentBounds(rendered.bounds, strokes.length > 0, images);
 	const viewBox = [
 		bounds.minX - padding,
 		bounds.minY - padding,
@@ -33,7 +34,7 @@ export function renderStrokesToSvg(
 		bounds.height + padding * 2,
 	].join(' ');
 
-	return buildSvgString(rendered.pathsMarkup, viewBox, snapshotJson);
+	return buildSvgString(renderImageMarkup(images) + rendered.pathsMarkup, viewBox, snapshotJson);
 }
 
 /**
@@ -48,9 +49,14 @@ export function renderWritingStrokesToSvg(
 ): string {
 	const lineHeight = snapshot.writingLineHeight ?? WRITING_LINE_HEIGHT;
 	const rendered = renderStrokePathsAndBounds(strokes);
+	const images = snapshot.images ?? [];
 	let height = WRITING_MIN_PAGE_HEIGHT;
-	if (strokes.length > 0) {
-		const numFilledLines = Math.ceil((rendered.bounds.maxY + padding) / lineHeight);
+	if (strokes.length > 0 || images.length > 0) {
+		const contentMaxY = Math.max(
+			strokes.length > 0 ? rendered.bounds.maxY : 0,
+			...images.map((image) => image.y + image.height),
+		);
+		const numFilledLines = Math.ceil((contentMaxY + padding) / lineHeight);
 		height = Math.max((numFilledLines + 0.5) * lineHeight, WRITING_MIN_PAGE_HEIGHT);
 	}
 
@@ -63,7 +69,7 @@ export function renderWritingStrokesToSvg(
 	}
 
 	const viewBox = `0 0 ${pageWidth} ${height}`;
-	return buildSvgString(guideMarkup + rendered.pathsMarkup, viewBox, snapshot);
+	return buildSvgString(guideMarkup + renderImageMarkup(images) + rendered.pathsMarkup, viewBox, snapshot);
 }
 
 
@@ -83,6 +89,31 @@ function buildStrokePathMarkup(d: string, offsetX: number, offsetY: number, colo
 		return `<g transform="translate(${offsetX},${offsetY})"><path ${pathAttrs} /></g>\n`;
 	}
 	return `<path ${pathAttrs} />\n`;
+}
+
+function renderImageMarkup(images: InkImage[]): string {
+	return images.map((image) => {
+		const transform = `translate(${image.x} ${image.y}) rotate(${image.rotation} ${image.width / 2} ${image.height / 2})`;
+		return `<g transform="${transform}" class="ink-type-image"><image href="${escapeXmlAttribute(image.dataUrl)}" x="0" y="0" width="${image.width}" height="${image.height}" preserveAspectRatio="none" /></g>\n`;
+	}).join('');
+}
+
+function combinedContentBounds(strokeBounds: StrokeBounds, hasStrokes: boolean, images: InkImage[]): StrokeBounds {
+	let minX = hasStrokes ? strokeBounds.minX : Infinity;
+	let minY = hasStrokes ? strokeBounds.minY : Infinity;
+	let maxX = hasStrokes ? strokeBounds.maxX : -Infinity;
+	let maxY = hasStrokes ? strokeBounds.maxY : -Infinity;
+	for (const image of images) {
+		minX = Math.min(minX, image.x);
+		minY = Math.min(minY, image.y);
+		maxX = Math.max(maxX, image.x + image.width);
+		maxY = Math.max(maxY, image.y + image.height);
+	}
+	return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+function escapeXmlAttribute(value: string): string {
+	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
 // Building the full SVG document

@@ -9,6 +9,7 @@ import { PointerIcon } from 'src/graphics/icons/pointer-icon';
 import classNames from 'classnames';
 import { TooltipButton } from 'src/components/jsx-components/tooltip-button/tooltip-button';
 import type { InkCanvasEditor, InkTool } from 'src/ink-canvas/types';
+import { Notice } from 'obsidian';
 
 //////////
 //////////
@@ -46,9 +47,16 @@ interface InkCanvasDrawingMenuProps {
 }
 
 export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDrawingMenuProps>((props, ref) => {
+	const imageInputRef = React.useRef<HTMLInputElement>(null);
 
 	const [curTool, setCurTool] = React.useState<tool>(tool.draw);
 	const [curColour, setCurColour] = React.useState<string>('currentColor');
+	const [wholeStrokeEraser, setWholeStrokeEraser] = React.useState(
+		props.plugin?.settings.wholeStrokeEraser ?? true,
+	);
+	const [shapeRecognition, setShapeRecognition] = React.useState(
+		props.plugin?.settings.shapeRecognitionEnabled ?? true,
+	);
 
 	// Sync toolbar highlight when the canvas changes tool (e.g. cmd/ctrl temporary erase).
 	React.useEffect(() => {
@@ -116,6 +124,42 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 		props.onActivateTool?.('draw');
 	}
 
+	function toggleEraserMode() {
+		const next = !wholeStrokeEraser;
+		setWholeStrokeEraser(next);
+		props.getEditor()?.setWholeStrokeEraserEnabled(next);
+		if (props.plugin) {
+			props.plugin.settings.wholeStrokeEraser = next;
+			void props.plugin.saveSettings();
+		}
+	}
+
+	function toggleShapeRecognition() {
+		const next = !shapeRecognition;
+		setShapeRecognition(next);
+		props.getEditor()?.setShapeRecognitionEnabled(next);
+		if (props.plugin) {
+			props.plugin.settings.shapeRecognitionEnabled = next;
+			void props.plugin.saveSettings();
+		}
+	}
+
+	async function importImage(file: File | undefined) {
+		if (!file) return;
+		const editor = props.getEditor();
+		if (!editor) return;
+		try {
+			const optimized = await optimizeImportedImage(file);
+			editor.addImage(optimized.dataUrl, optimized.width, optimized.height);
+			props.onStoreChange();
+		} catch (error) {
+			console.error('Ink: failed to import image', error);
+			new Notice('Ink could not import this image format.');
+		} finally {
+			if (imageInputRef.current) imageInputRef.current.value = '';
+		}
+	}
+
 	///////////
 	///////////
 
@@ -128,8 +172,18 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 				'ink_menu-bar_canvas',
 			])}
 		>
-			{(props.showFingerDrawingToggle || props.onExpandClick) && (
-				<div className='ink_quick-menu'>
+			<div className='ink_quick-menu'>
+				<input
+					ref={imageInputRef}
+					type='file'
+					accept='image/*'
+					className='ink_image-input'
+					onChange={(event) => void importImage(event.currentTarget.files?.[0])}
+				/>
+				<TooltipButton tooltip='Import image' onClick={() => imageInputRef.current?.click()}>
+					<span className='ink_tool-symbol' aria-hidden='true'>▧</span>
+				</TooltipButton>
+			{(props.showFingerDrawingToggle || props.onExpandClick) && (<>
 					{props.onExpandClick && (
 						<TooltipButton
 							tooltip='Open in full view'
@@ -147,8 +201,8 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 							<PointerIcon />
 						</TooltipButton>
 					)}
-				</div>
-			)}
+				</>)}
+			</div>
 			<div className='ink_tool-menu'>
 				<TooltipButton
 					tooltip='Select'
@@ -170,6 +224,20 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 					disabled={curTool === tool.eraser}
 				>
 					<EraseIcon />
+				</TooltipButton>
+				<TooltipButton
+					tooltip={wholeStrokeEraser ? 'Whole-stroke eraser' : 'Precise eraser'}
+					className={wholeStrokeEraser ? 'ink_menu-toggle--active' : undefined}
+					onClick={toggleEraserMode}
+				>
+					<span className='ink_tool-symbol' aria-hidden='true'>{wholeStrokeEraser ? '■' : '⌁'}</span>
+				</TooltipButton>
+				<TooltipButton
+					tooltip={shapeRecognition ? 'Shape recognition enabled' : 'Shape recognition disabled'}
+					className={shapeRecognition ? 'ink_menu-toggle--active' : undefined}
+					onClick={toggleShapeRecognition}
+				>
+					<span className='ink_tool-symbol' aria-hidden='true'>△</span>
 				</TooltipButton>
 			</div>
 			<div className='ink_other-menu ink_colour-menu'>
@@ -195,3 +263,40 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 });
 
 export default InkCanvasDrawingMenu;
+
+async function optimizeImportedImage(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
+	const originalDataUrl = await readFileAsDataUrl(file);
+	const image = await loadImage(originalDataUrl);
+	const maxDimension = 2048;
+	const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+	const width = Math.max(1, Math.round(image.naturalWidth * scale));
+	const height = Math.max(1, Math.round(image.naturalHeight * scale));
+	if (scale === 1 && file.size <= 2_500_000 && /image\/(png|jpeg|webp)/.test(file.type)) {
+		return { dataUrl: originalDataUrl, width, height };
+	}
+	const canvas = document.createElement('canvas');
+	canvas.width = width;
+	canvas.height = height;
+	const context = canvas.getContext('2d');
+	if (!context) return { dataUrl: originalDataUrl, width, height };
+	context.drawImage(image, 0, 0, width, height);
+	return { dataUrl: canvas.toDataURL('image/jpeg', 0.9), width, height };
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result));
+		reader.onerror = () => reject(reader.error ?? new Error('Could not read image'));
+		reader.readAsDataURL(file);
+	});
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+	return new Promise((resolve, reject) => {
+		const image = new Image();
+		image.onload = () => resolve(image);
+		image.onerror = () => reject(new Error('Unsupported image format'));
+		image.src = dataUrl;
+	});
+}

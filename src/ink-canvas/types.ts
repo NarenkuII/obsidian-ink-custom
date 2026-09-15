@@ -63,11 +63,23 @@ export interface InkStroke {
 	finishedAt?: number;
 }
 
+/** Raster image embedded in an Ink canvas and transformed independently from strokes. */
+export interface InkImage {
+	id: string;
+	dataUrl: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	rotation: number;
+}
+
 /** Serialisable snapshot of the entire canvas state. */
 export interface InkCanvasSnapshot {
 	/** Format discriminator — always 1 for this version. */
 	version: 1;
 	strokes: InkStroke[];
+	images?: InkImage[];
 	/** Camera position at last save. Omitted until the user explicitly moves the camera,
 	 *  so the canvas auto-fits to strokes on every open until a deliberate camera position exists. */
 	camera?: CameraState;
@@ -146,6 +158,17 @@ export interface InkCanvasEditor {
 	// Selection
 	getSelectedStrokeIds(): Set<string>;
 	deleteSelectedStrokes(): void;
+	copySelectedStrokes(): boolean;
+	pasteCopiedStrokes(): boolean;
+	duplicateSelectedStrokes(): boolean;
+	addImage(dataUrl: string, naturalWidth: number, naturalHeight: number): void;
+	getSelectedImageIds(): Set<string>;
+
+	// Smart drawing / eraser modes
+	isWholeStrokeEraserEnabled(): boolean;
+	setWholeStrokeEraserEnabled(enabled: boolean): void;
+	isShapeRecognitionEnabled(): boolean;
+	setShapeRecognitionEnabled(enabled: boolean): void;
 
 	// Data
 	getSnapshot(): InkCanvasSnapshot;
