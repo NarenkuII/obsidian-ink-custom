@@ -208,20 +208,24 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 						{selectionAspectRatioLocked ? <LockIcon /> : <ResizeDiagonalIcon />}
 					</TooltipButton>
 				)}
-				<TooltipButton
-					tooltip={wholeStrokeEraser ? 'Whole-stroke eraser' : 'Precise eraser'}
-					className={wholeStrokeEraser ? 'ink_menu-toggle--active' : undefined}
-					onClick={toggleEraserMode}
-				>
-					<span className='ink_tool-symbol' aria-hidden='true'>{wholeStrokeEraser ? '■' : '⌁'}</span>
-				</TooltipButton>
-				<TooltipButton
-					tooltip={shapeRecognition ? 'Shape recognition enabled' : 'Shape recognition disabled'}
-					className={shapeRecognition ? 'ink_menu-toggle--active' : undefined}
-					onClick={toggleShapeRecognition}
-				>
-					<span className='ink_tool-symbol' aria-hidden='true'>□</span>
-				</TooltipButton>
+				{curTool === tool.eraser && (
+					<TooltipButton
+						tooltip={wholeStrokeEraser ? 'Whole-stroke eraser' : 'Precise eraser'}
+						className={wholeStrokeEraser ? 'ink_menu-toggle--active' : undefined}
+						onClick={toggleEraserMode}
+					>
+						<span className='ink_tool-symbol' aria-hidden='true'>{wholeStrokeEraser ? '■' : '⌁'}</span>
+					</TooltipButton>
+				)}
+				{curTool === tool.draw && (
+					<TooltipButton
+						tooltip={shapeRecognition ? 'Shape recognition enabled' : 'Shape recognition disabled'}
+						className={shapeRecognition ? 'ink_menu-toggle--active' : undefined}
+						onClick={toggleShapeRecognition}
+					>
+						<span className='ink_tool-symbol' aria-hidden='true'>□</span>
+					</TooltipButton>
+				)}
 			{(props.showFingerDrawingToggle || props.onExpandClick) && (<>
 					{props.onExpandClick && (
 						<TooltipButton
