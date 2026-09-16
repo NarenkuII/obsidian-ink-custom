@@ -1,6 +1,6 @@
 import type { InkPoint } from './types';
 
-export type RecognizedShape = 'line' | 'rectangle' | 'ellipse' | 'triangle' | 'arrow';
+export type RecognizedShape = 'line' | 'rectangle' | 'circle' | 'triangle' | 'arrow';
 
 export interface ShapeRecognitionResult {
 	shape: RecognizedShape;
@@ -19,7 +19,7 @@ export function recognizeInkShape(points: InkPoint[]): ShapeRecognitionResult | 
 	const endpointDistance = distance(start, end);
 	const pressure = averagePressure(points);
 	if (endpointDistance / pathLength >= 0.965) {
-		return { shape: 'line', points: [withPressure(start, pressure), withPressure(end, pressure)] };
+		return { shape: 'line', points: snappedLinePoints(start, end, pressure) };
 	}
 
 	const simplifiedOpen = simplify(points, Math.max(2, diagonal * 0.045));
@@ -29,21 +29,35 @@ export function recognizeInkShape(points: InkPoint[]): ShapeRecognitionResult | 
 	const closed = endpointDistance <= Math.max(14, diagonal * 0.2);
 	if (!closed) return null;
 	const loop = points.slice(0, -1);
-	const radialVariation = ellipseRadialVariation(loop, bounds);
-	const aspect = bounds.width / Math.max(1, bounds.height);
-	if (radialVariation < 0.2 && aspect > 0.45 && aspect < 2.2) {
-		return { shape: 'ellipse', points: ellipsePoints(bounds, pressure) };
-	}
-
-	const polygon = simplify([...loop, loop[0]], Math.max(3, diagonal * 0.075));
-	const corners = removeClosingDuplicate(polygon);
+	const corners = findPolygonCorners(loop, diagonal);
 	if (corners.length === 3) {
 		return { shape: 'triangle', points: closePolygon(corners, pressure) };
 	}
-	if (corners.length === 4 && isRectangle(corners)) {
-		return { shape: 'rectangle', points: closePolygon(corners, pressure) };
+	const rectangularPerimeterRatio = pathLength / Math.max(1, 2 * (bounds.width + bounds.height));
+	if (corners.length === 4 && rectangularPerimeterRatio > 0.88 && isRectangle(corners)) {
+		return { shape: 'rectangle', points: rectanglePoints(bounds, pressure) };
+	}
+
+	const aspect = bounds.width / Math.max(1, bounds.height);
+	if (aspect > 0.72 && aspect < 1.38 && circleRadialVariation(loop, bounds) < 0.24) {
+		return { shape: 'circle', points: circlePoints(bounds, pressure) };
 	}
 	return null;
+}
+
+const AXIS_SNAP_RADIANS = 10 * Math.PI / 180;
+
+function snappedLinePoints(start: InkPoint, end: InkPoint, pressure: number): InkPoint[] {
+	const dx = end[0] - start[0];
+	const dy = end[1] - start[1];
+	const angle = Math.atan2(Math.abs(dy), Math.abs(dx));
+	let snappedEnd: InkPoint = end;
+	if (angle <= AXIS_SNAP_RADIANS) {
+		snappedEnd = [end[0], start[1], end[2]];
+	} else if (Math.abs(Math.PI / 2 - angle) <= AXIS_SNAP_RADIANS) {
+		snappedEnd = [start[0], end[1], end[2]];
+	}
+	return [withPressure(start, pressure), withPressure(snappedEnd, pressure)];
 }
 
 function recognizeArrow(points: InkPoint[], pressure: number, diagonal: number): ShapeRecognitionResult | null {
@@ -66,25 +80,43 @@ function recognizeArrow(points: InkPoint[], pressure: number, diagonal: number):
 	return null;
 }
 
-function ellipsePoints(bounds: ReturnType<typeof pointBounds>, pressure: number): InkPoint[] {
+function rectanglePoints(bounds: ReturnType<typeof pointBounds>, pressure: number): InkPoint[] {
+	return closePolygon([
+		[bounds.minX, bounds.minY, pressure],
+		[bounds.maxX, bounds.minY, pressure],
+		[bounds.maxX, bounds.maxY, pressure],
+		[bounds.minX, bounds.maxY, pressure],
+	], pressure);
+}
+
+function circlePoints(bounds: ReturnType<typeof pointBounds>, pressure: number): InkPoint[] {
 	const cx = bounds.minX + bounds.width / 2;
 	const cy = bounds.minY + bounds.height / 2;
+	const radius = (bounds.width + bounds.height) / 4;
 	const points: InkPoint[] = [];
 	for (let i = 0; i <= 40; i++) {
 		const angle = (i / 40) * Math.PI * 2;
-		points.push([cx + Math.cos(angle) * bounds.width / 2, cy + Math.sin(angle) * bounds.height / 2, pressure]);
+		points.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius, pressure]);
 	}
 	return points;
 }
 
-function ellipseRadialVariation(points: InkPoint[], bounds: ReturnType<typeof pointBounds>): number {
-	const rx = Math.max(1, bounds.width / 2);
-	const ry = Math.max(1, bounds.height / 2);
-	const cx = bounds.minX + rx;
-	const cy = bounds.minY + ry;
-	const radii = points.map((point) => Math.hypot((point[0] - cx) / rx, (point[1] - cy) / ry));
+function circleRadialVariation(points: InkPoint[], bounds: ReturnType<typeof pointBounds>): number {
+	const cx = bounds.minX + bounds.width / 2;
+	const cy = bounds.minY + bounds.height / 2;
+	const radii = points.map((point) => Math.hypot(point[0] - cx, point[1] - cy));
 	const mean = radii.reduce((sum, radius) => sum + radius, 0) / radii.length;
-	return Math.sqrt(radii.reduce((sum, radius) => sum + (radius - mean) ** 2, 0) / radii.length);
+	if (mean === 0) return Infinity;
+	return Math.sqrt(radii.reduce((sum, radius) => sum + (radius - mean) ** 2, 0) / radii.length) / mean;
+}
+
+function findPolygonCorners(points: InkPoint[], diagonal: number): InkPoint[] {
+	for (const factor of [0.055, 0.075, 0.1, 0.13]) {
+		const polygon = simplify([...points, points[0]], Math.max(3, diagonal * factor));
+		const corners = removeClosingDuplicate(polygon);
+		if (corners.length === 3 || corners.length === 4) return corners;
+	}
+	return [];
 }
 
 function isRectangle(points: InkPoint[]): boolean {

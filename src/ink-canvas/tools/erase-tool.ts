@@ -1,6 +1,7 @@
 import { RemoveStrokesCommand, ReplaceStrokesCommand } from '../commands';
 import {
 	ERASER_COMMIT_PREVIEW_MS,
+	INK_PRECISE_ERASE_PREVIEW_CLASS,
 	INK_STROKE_PENDING_ERASE_CLASS,
 } from '../constants/erase-tool';
 import type { StrokeStore } from '../stroke-store';
@@ -67,7 +68,10 @@ export function eraseToolPointerUp(_e: PointerEvent, ctx: EraseToolContext): voi
 		}, ERASER_COMMIT_PREVIEW_MS);
 	} else if (ids.length > 0) {
 		const svg = ctx.getSvgElement();
-		if (svg) clearPendingErasePreview(svg, ids);
+		if (svg) {
+			clearPendingErasePreview(svg, ids);
+			clearPreciseErasePreview(svg);
+		}
 		const originals = ids
 			.map((id) => ctx.store.getById(id))
 			.filter((stroke): stroke is NonNullable<typeof stroke> => stroke !== undefined);
@@ -78,6 +82,8 @@ export function eraseToolPointerUp(_e: PointerEvent, ctx: EraseToolContext): voi
 		ctx.undoManager.execute(new ReplaceStrokesCommand(ctx.store, originals, replacements));
 		ctx.onErase?.();
 	}
+	const svg = ctx.getSvgElement();
+	if (svg) clearPreciseErasePreview(svg);
 	preciseEraserPath = [];
 }
 
@@ -86,6 +92,7 @@ export function eraseToolPointerCancel(_e: PointerEvent, ctx: EraseToolContext):
 	if (svg && touchedStrokeIds.size > 0) {
 		clearPendingErasePreview(svg, touchedStrokeIds);
 	}
+	if (svg) clearPreciseErasePreview(svg);
 	erasing = false;
 	lastEraseClientPoint = null;
 	touchedStrokeIds = new Set();
@@ -124,9 +131,10 @@ function hitTestEraserAtClientPoint(
 	for (const sample of samplePoints) {
 		for (const strokeId of getStrokeIdsAtClientPoint(svg, sample.x, sample.y)) {
 			if (pendingRemovalStrokeIds.has(strokeId)) continue;
-			markStrokeForErase(svg, strokeId);
+			markStrokeForErase(svg, strokeId, ctx.getWholeStrokeEraser());
 		}
 	}
+	if (!ctx.getWholeStrokeEraser()) updatePreciseErasePreview(svg, ctx);
 }
 
 function appendPreciseEraserPoint(clientX: number, clientY: number, ctx: EraseToolContext): void {
@@ -144,14 +152,14 @@ function getStrokeGroupElement(svg: SVGSVGElement, strokeId: string): SVGGElemen
 	);
 }
 
-function markStrokeForErase(svg: SVGSVGElement, strokeId: string): void {
+function markStrokeForErase(svg: SVGSVGElement, strokeId: string, wholeStroke: boolean): void {
 	if (touchedStrokeIds.has(strokeId)) return;
 
 	const strokeGroup = getStrokeGroupElement(svg, strokeId);
 	if (!strokeGroup) return;
 
 	touchedStrokeIds.add(strokeId);
-	strokeGroup.classList.add(INK_STROKE_PENDING_ERASE_CLASS);
+	if (wholeStroke) strokeGroup.classList.add(INK_STROKE_PENDING_ERASE_CLASS);
 }
 
 function clearPendingErasePreview(svg: SVGSVGElement, strokeIds: Iterable<string>): void {
@@ -159,4 +167,47 @@ function clearPendingErasePreview(svg: SVGSVGElement, strokeIds: Iterable<string
 		const strokeGroup = getStrokeGroupElement(svg, strokeId);
 		strokeGroup?.classList.remove(INK_STROKE_PENDING_ERASE_CLASS);
 	}
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function updatePreciseErasePreview(svg: SVGSVGElement, ctx: EraseToolContext): void {
+	clearPreciseErasePreview(svg);
+	if (touchedStrokeIds.size === 0 || preciseEraserPath.length === 0) return;
+
+	const strokeGroups = Array.from(touchedStrokeIds)
+		.map((id) => getStrokeGroupElement(svg, id))
+		.filter((group): group is SVGGElement => group !== null);
+	const parent = strokeGroups[0]?.parentElement;
+	if (!parent) return;
+
+	const preview = document.createElementNS(SVG_NS, 'g');
+	preview.classList.add(INK_PRECISE_ERASE_PREVIEW_CLASS);
+	preview.setAttribute('pointer-events', 'none');
+
+	const clipId = `ink-precise-erase-${Date.now()}`;
+	const defs = document.createElementNS(SVG_NS, 'defs');
+	const clipPath = document.createElementNS(SVG_NS, 'clipPath');
+	clipPath.setAttribute('id', clipId);
+	clipPath.setAttribute('clipPathUnits', 'userSpaceOnUse');
+	const radius = eraserHitRadiusScreenPx(ctx.getCamera().zoom) / ctx.getCamera().zoom;
+	for (const point of preciseEraserPath) {
+		const circle = document.createElementNS(SVG_NS, 'circle');
+		circle.setAttribute('cx', String(point.x));
+		circle.setAttribute('cy', String(point.y));
+		circle.setAttribute('r', String(radius));
+		clipPath.appendChild(circle);
+	}
+	defs.appendChild(clipPath);
+	preview.appendChild(defs);
+
+	const clippedStrokes = document.createElementNS(SVG_NS, 'g');
+	clippedStrokes.setAttribute('clip-path', `url(#${clipId})`);
+	for (const group of strokeGroups) clippedStrokes.appendChild(group.cloneNode(true));
+	preview.appendChild(clippedStrokes);
+	parent.appendChild(preview);
+}
+
+function clearPreciseErasePreview(svg: SVGSVGElement): void {
+	svg.querySelectorAll(`.${INK_PRECISE_ERASE_PREVIEW_CLASS}`).forEach((element) => element.remove());
 }

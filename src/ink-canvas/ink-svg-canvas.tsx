@@ -40,6 +40,7 @@ import type { SelectToolContext } from './tools/select-tool';
 import { InkAdaptiveGrid, INK_GRID_BOOX_ZOOM_FADE_SCALE } from './ink-adaptive-grid';
 import { getRenderedStrokeData } from './rendered-stroke-cache';
 import { copyInkImages, copyInkStrokes, createPastedInkImages, createPastedInkStrokes, duplicateInkImages, duplicateInkStrokes } from './selection-clipboard';
+import { getStraightLineSelection } from './line-selection';
 import { ImageStore } from './image-store';
 import {
 	imageSelectPointerCancel,
@@ -1446,7 +1447,8 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	const images = imageStoreRef.current.getAll();
 	const selectedImage = images.find((image) => selectedImageIds.has(image.id));
 	const selectedStrokes = strokes.filter((stroke) => selectedIds.has(stroke.id));
-	const selectionBounds = selectedStrokes.length > 0
+	const straightLineSelection = getStraightLineSelection(selectedStrokes);
+	const selectionBounds = selectedStrokes.length > 0 && !straightLineSelection
 		? computeStrokesBounds(selectedStrokes)
 		: null;
 
@@ -1687,6 +1689,34 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 								stroke="var(--background-primary)"
 								strokeWidth={2 / camera.zoom}
 							/>
+						</g>
+					)}
+					{straightLineSelection && (
+						<g className="ink-canvas-line-selection" pointerEvents="none">
+							<line
+								x1={straightLineSelection.start.x}
+								y1={straightLineSelection.start.y}
+								x2={straightLineSelection.end.x}
+								y2={straightLineSelection.end.y}
+								stroke="rgba(0, 123, 255, 0.72)"
+								strokeWidth={1.5 / camera.zoom}
+								strokeDasharray={`${4 / camera.zoom} ${3 / camera.zoom}`}
+							/>
+							{[
+								{ point: straightLineSelection.start, middle: false },
+								{ point: straightLineSelection.middle, middle: true },
+								{ point: straightLineSelection.end, middle: false },
+							].map(({ point, middle }, index) => (
+								<circle
+									key={index}
+									cx={point.x}
+									cy={point.y}
+									r={(middle ? 6.5 : 5.5) / camera.zoom}
+									fill={middle ? 'rgba(0, 123, 255, 0.95)' : 'var(--background-primary)'}
+									stroke="rgba(0, 123, 255, 0.95)"
+									strokeWidth={1.5 / camera.zoom}
+								/>
+							))}
 						</g>
 					)}
 

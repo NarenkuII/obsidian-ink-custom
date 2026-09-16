@@ -2,6 +2,7 @@ import './modify-menu.scss';
 import * as React from 'react';
 import { UndoIcon } from 'src/graphics/icons/undo-icon';
 import { RedoIcon } from 'src/graphics/icons/redo-icon';
+import { TrashIcon } from 'src/graphics/icons/trash-icon';
 import classNames from 'classnames';
 import { TooltipButton } from 'src/components/jsx-components/tooltip-button/tooltip-button';
 import type { InkCanvasEditor } from 'src/ink-canvas/types';
@@ -93,6 +94,13 @@ export const InkCanvasModifyMenu = React.forwardRef<HTMLDivElement, InkCanvasMod
 		props.onStoreChange();
 	}
 
+	function deleteSelection() {
+		const editor = props.getEditor();
+		if (!editor || (!editor.getSelectedStrokeIds().size && !editor.getSelectedImageIds().size)) return;
+		editor.deleteSelectedStrokes();
+		props.onStoreChange();
+	}
+
 	///////////
 	///////////
 
@@ -125,6 +133,13 @@ export const InkCanvasModifyMenu = React.forwardRef<HTMLDivElement, InkCanvasMod
 					disabled={!canDuplicate}
 				>
 					<span className='ink_modify-symbol' aria-hidden='true'>⧉</span>
+				</TooltipButton>
+				<TooltipButton
+					tooltip='Delete selection'
+					onClick={deleteSelection}
+					disabled={!canDuplicate}
+				>
+					<TrashIcon />
 				</TooltipButton>
 			</div>
 		</div>

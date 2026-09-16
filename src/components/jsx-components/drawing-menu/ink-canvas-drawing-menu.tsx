@@ -67,6 +67,8 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 			const editor = props.getEditor();
 			if (!editor?.subscribeToolChange) return false;
 			editor.setStrokeStyle({ color: 'currentColor' });
+			setWholeStrokeEraser(editor.isWholeStrokeEraserEnabled());
+			setShapeRecognition(editor.isShapeRecognitionEnabled());
 			unsubscribe = editor.subscribeToolChange((inkTool) => {
 				setCurTool(inkToolToMenuTool(inkTool));
 			});
@@ -183,6 +185,20 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 				<TooltipButton tooltip='Import image' onClick={() => imageInputRef.current?.click()}>
 					<span className='ink_tool-symbol' aria-hidden='true'>▧</span>
 				</TooltipButton>
+				<TooltipButton
+					tooltip={wholeStrokeEraser ? 'Whole-stroke eraser' : 'Precise eraser'}
+					className={wholeStrokeEraser ? 'ink_menu-toggle--active' : undefined}
+					onClick={toggleEraserMode}
+				>
+					<span className='ink_tool-symbol' aria-hidden='true'>{wholeStrokeEraser ? '■' : '⌁'}</span>
+				</TooltipButton>
+				<TooltipButton
+					tooltip={shapeRecognition ? 'Shape recognition enabled' : 'Shape recognition disabled'}
+					className={shapeRecognition ? 'ink_menu-toggle--active' : undefined}
+					onClick={toggleShapeRecognition}
+				>
+					<span className='ink_tool-symbol' aria-hidden='true'>△</span>
+				</TooltipButton>
 			{(props.showFingerDrawingToggle || props.onExpandClick) && (<>
 					{props.onExpandClick && (
 						<TooltipButton
@@ -224,20 +240,6 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 					disabled={curTool === tool.eraser}
 				>
 					<EraseIcon />
-				</TooltipButton>
-				<TooltipButton
-					tooltip={wholeStrokeEraser ? 'Whole-stroke eraser' : 'Precise eraser'}
-					className={wholeStrokeEraser ? 'ink_menu-toggle--active' : undefined}
-					onClick={toggleEraserMode}
-				>
-					<span className='ink_tool-symbol' aria-hidden='true'>{wholeStrokeEraser ? '■' : '⌁'}</span>
-				</TooltipButton>
-				<TooltipButton
-					tooltip={shapeRecognition ? 'Shape recognition enabled' : 'Shape recognition disabled'}
-					className={shapeRecognition ? 'ink_menu-toggle--active' : undefined}
-					onClick={toggleShapeRecognition}
-				>
-					<span className='ink_tool-symbol' aria-hidden='true'>△</span>
 				</TooltipButton>
 			</div>
 			<div className='ink_other-menu ink_colour-menu'>

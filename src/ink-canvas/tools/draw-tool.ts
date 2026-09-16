@@ -61,12 +61,15 @@ interface ActiveStroke {
 	lastCommittedPointAtMs: number;
 	rawSamples: RawStrokeSample[];
 	lastMeaningfulMoveAtMs: number;
+	shapePreviewSourcePoints?: InkPoint[];
 }
 
 /** When the pen creeps slowly away from the anchor but stays near the tip, append instead of replacing. */
 const SLOW_DRAW_TIP_REPLACE_APPEND_MS = 40;
 
 let activeStroke: ActiveStroke | null = null;
+let shapeRecognitionTimer: number | null = null;
+const SHAPE_RECOGNITION_HOLD_MS = 350;
 
 interface RawStrokeSample {
 	clientX: number;
@@ -127,22 +130,28 @@ export function drawToolPointerDown(e: PointerEvent, ctx: DrawToolContext): void
 	};
 
 	updateLiveStrokePath(ctx);
+	scheduleShapeRecognition(ctx);
 }
 
 export function drawToolPointerMove(e: PointerEvent, ctx: DrawToolContext): void {
 	if (!activeStroke) return;
-	appendDrawSamplesFromPointerEvent(e, ctx, { forceCommitFinalPoint: false });
+	const meaningfulMove = appendDrawSamplesFromPointerEvent(e, ctx, { forceCommitFinalPoint: false });
+	if (meaningfulMove) scheduleShapeRecognition(ctx);
 }
 
 export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 	if (!activeStroke) return;
+	clearShapeRecognitionTimer();
+	const hasLiveShapePreview = activeStroke.shapePreviewSourcePoints !== undefined;
 
 	// Final segment on `pointerup` can include the true lift position.
-	appendDrawSamplesFromPointerEvent(e, ctx, { forceCommitFinalPoint: true });
+	if (!hasLiveShapePreview) {
+		appendDrawSamplesFromPointerEvent(e, ctx, { forceCommitFinalPoint: true });
+	}
 
 	const isFingerStroke = isFingerPointer(e);
 
-	if (!isFingerStroke) {
+	if (!isFingerStroke && !hasLiveShapePreview) {
 		const detected = detectStrokeInputFromRawPressures(
 			activeStroke.rawSamples
 				.filter((s) => !s.isPointerUpLiftSample)
@@ -172,7 +181,7 @@ export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 				ctx.getPenStabilization(),
 			);
 		}
-	} else {
+	} else if (!hasLiveShapePreview) {
 		activeStroke.style = buildInkStrokeStyleForTreatAs(
 			ctx.getStrokeStyle(),
 			'mouse',
@@ -182,7 +191,7 @@ export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 	}
 
 	const heldAtEndMs = e.timeStamp - activeStroke.lastMeaningfulMoveAtMs;
-	if (ctx.getShapeRecognitionEnabled() && heldAtEndMs >= 350) {
+	if (!hasLiveShapePreview && ctx.getShapeRecognitionEnabled() && heldAtEndMs >= SHAPE_RECOGNITION_HOLD_MS) {
 		const recognized = recognizeInkShape(activeStroke.points);
 		if (recognized) activeStroke.points = recognized.points;
 	}
@@ -209,6 +218,7 @@ export function drawToolPointerUp(e: PointerEvent, ctx: DrawToolContext): void {
 }
 
 export function drawToolPointerCancel(_e: PointerEvent, ctx: DrawToolContext): void {
+	clearShapeRecognitionTimer();
 	// Discard the in-progress stroke
 	const livePath = ctx.getLiveStrokePath();
 	if (livePath) livePath.setAttribute('d', '');
@@ -227,12 +237,23 @@ function appendDrawSamplesFromPointerEvent(
 	e: PointerEvent,
 	ctx: DrawToolContext,
 	options: { forceCommitFinalPoint: boolean },
-): void {
-	if (!activeStroke) return;
+): boolean {
+	if (!activeStroke) return false;
 
 	const camera = ctx.getCamera();
 	const containerRect = ctx.getContainerRect();
 	const samples = getPointerSamples(e);
+	const comparisonPoints = activeStroke.shapePreviewSourcePoints ?? activeStroke.points;
+	const comparisonTip = comparisonPoints[comparisonPoints.length - 1];
+	const meaningfulMove = samples.some((sample) => {
+		const point = screenToPage(camera, containerRect, sample.clientX, sample.clientY);
+		return Math.hypot(point.x - comparisonTip[0], point.y - comparisonTip[1]) >= 1 / camera.zoom;
+	});
+	if (activeStroke.shapePreviewSourcePoints) {
+		if (!meaningfulMove && !options.forceCommitFinalPoint) return false;
+		activeStroke.points = activeStroke.shapePreviewSourcePoints;
+		activeStroke.shapePreviewSourcePoints = undefined;
+	}
 	const treatAsPen = getEffectiveStrokeInputTreatAs(e, ctx) === 'pen';
 	const mergeThresholdPage = 1 / camera.zoom;
 	const hardwarePen = isHardwarePen(e);
@@ -325,6 +346,29 @@ function appendDrawSamplesFromPointerEvent(
 	}
 
 	updateLiveStrokePath(ctx);
+	return meaningfulMove;
+}
+
+function scheduleShapeRecognition(ctx: DrawToolContext): void {
+	clearShapeRecognitionTimer();
+	if (!activeStroke || !ctx.getShapeRecognitionEnabled()) return;
+	const strokeId = activeStroke.id;
+	shapeRecognitionTimer = window.setTimeout(() => {
+		shapeRecognitionTimer = null;
+		if (!activeStroke || activeStroke.id !== strokeId || !ctx.getShapeRecognitionEnabled()) return;
+		const sourcePoints = activeStroke.points.map(copyInkPoint);
+		const recognized = recognizeInkShape(sourcePoints);
+		if (!recognized) return;
+		activeStroke.shapePreviewSourcePoints = sourcePoints;
+		activeStroke.points = recognized.points;
+		updateLiveStrokePath(ctx);
+	}, SHAPE_RECOGNITION_HOLD_MS);
+}
+
+function clearShapeRecognitionTimer(): void {
+	if (shapeRecognitionTimer === null) return;
+	window.clearTimeout(shapeRecognitionTimer);
+	shapeRecognitionTimer = null;
 }
 
 function copyInkPoint(p: InkPoint): InkPoint {

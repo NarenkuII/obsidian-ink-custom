@@ -27,8 +27,15 @@ interface ImageGesture {
 }
 
 let gesture: ImageGesture | null = null;
+let pendingLongPress: {
+	timer: number;
+	image: InkImage;
+	start: { x: number; y: number };
+} | null = null;
 const HANDLE_RADIUS_PX = 20;
 const ROTATE_OFFSET_PX = 34;
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function imageSelectPointerDown(e: PointerEvent, ctx: ImageSelectToolContext): boolean {
 	const point = screenToPage(ctx.getCamera(), ctx.getContainerRect(), e.clientX, e.clientY);
@@ -51,13 +58,29 @@ export function imageSelectPointerDown(e: PointerEvent, ctx: ImageSelectToolCont
 	const imageId = imageElement?.getAttribute('data-ink-image-id');
 	const image = imageId ? ctx.store.getById(imageId) : undefined;
 	if (!image) return false;
-	ctx.clearStrokeSelection();
-	ctx.setSelectedImageIds(new Set([image.id]));
-	beginGesture('drag', image, point);
+	cancelPendingLongPress();
+	pendingLongPress = {
+		image,
+		start: point,
+		timer: window.setTimeout(() => {
+			const pending = pendingLongPress;
+			if (!pending || pending.image.id !== image.id) return;
+			pendingLongPress = null;
+			ctx.clearStrokeSelection();
+			ctx.setSelectedImageIds(new Set([image.id]));
+			beginGesture('drag', image, pending.start);
+		}, LONG_PRESS_MS),
+	};
 	return true;
 }
 
 export function imageSelectPointerMove(e: PointerEvent, ctx: ImageSelectToolContext): boolean {
+	if (pendingLongPress) {
+		const point = screenToPage(ctx.getCamera(), ctx.getContainerRect(), e.clientX, e.clientY);
+		const distance = Math.hypot(point.x - pendingLongPress.start.x, point.y - pendingLongPress.start.y);
+		if (distance > LONG_PRESS_MOVE_TOLERANCE_PX / ctx.getCamera().zoom) cancelPendingLongPress();
+		return true;
+	}
 	if (!gesture) return false;
 	const point = screenToPage(ctx.getCamera(), ctx.getContainerRect(), e.clientX, e.clientY);
 	const before = gesture.before;
@@ -86,6 +109,10 @@ export function imageSelectPointerMove(e: PointerEvent, ctx: ImageSelectToolCont
 }
 
 export function imageSelectPointerUp(ctx: ImageSelectToolContext): boolean {
+	if (pendingLongPress) {
+		cancelPendingLongPress();
+		return true;
+	}
 	if (!gesture) return false;
 	const completed = gesture;
 	gesture = null;
@@ -97,10 +124,20 @@ export function imageSelectPointerUp(ctx: ImageSelectToolContext): boolean {
 }
 
 export function imageSelectPointerCancel(ctx: ImageSelectToolContext): boolean {
+	if (pendingLongPress) {
+		cancelPendingLongPress();
+		return true;
+	}
 	if (!gesture) return false;
 	resetPreview(ctx, gesture.before);
 	gesture = null;
 	return true;
+}
+
+function cancelPendingLongPress(): void {
+	if (!pendingLongPress) return;
+	window.clearTimeout(pendingLongPress.timer);
+	pendingLongPress = null;
 }
 
 function beginGesture(mode: ImageGestureMode, image: InkImage, point: { x: number; y: number }): void {

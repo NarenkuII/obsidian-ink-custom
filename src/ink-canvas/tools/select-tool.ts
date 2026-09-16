@@ -14,6 +14,7 @@ import { computeStrokesBounds, type StrokeBounds } from '../svg-export';
 import type { CameraState, InkStroke } from '../types';
 import type { UndoManager } from '../undo-manager';
 import { getStrokeIdAtClientPoint } from '../utils/stroke-hit-test';
+import { getStraightLineSelection, type StraightLineSelection } from '../line-selection';
 
 ///////////////////////////
 ///////////////////////////
@@ -29,7 +30,7 @@ export interface SelectToolContext {
 	onSelectionChange?: () => void;
 }
 
-type SelectPhase = 'idle' | 'marquee' | 'dragging' | 'scaling' | 'rotating';
+type SelectPhase = 'idle' | 'marquee' | 'dragging' | 'scaling' | 'rotating' | 'line-resizing';
 type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 let phase: SelectPhase = 'idle';
@@ -69,19 +70,33 @@ export function selectToolPointerDown(e: PointerEvent, ctx: SelectToolContext): 
 	if (selected.size > 0) {
 		const selectedStrokes = getSelectedStrokes(ctx);
 		if (selectedStrokes.length > 0) {
-			const bounds = computeStrokesBounds(selectedStrokes);
-			const handle = hitTestSelectionHandle(pagePoint, bounds, camera.zoom);
-			if (handle === 'rotate') {
-				beginRotation(pagePoint, selectedStrokes, bounds);
-				return;
+			const line = getStraightLineSelection(selectedStrokes);
+			if (line) {
+				const lineHandle = hitTestLineHandle(pagePoint, line, camera.zoom);
+				if (lineHandle === 'middle') {
+					beginDrag(pagePoint);
+					return;
+				}
+				if (lineHandle === 'start' || lineHandle === 'end') {
+					beginLineResize(lineHandle, line);
+					return;
+				}
 			}
-			if (handle !== null) {
-				beginScale(handle, selectedStrokes, bounds, camera.zoom);
-				return;
-			}
-			if (pointInSelectionFrame(pagePoint, bounds, camera.zoom)) {
-				beginDrag(pagePoint);
-				return;
+			if (!line) {
+				const bounds = computeStrokesBounds(selectedStrokes);
+				const handle = hitTestSelectionHandle(pagePoint, bounds, camera.zoom);
+				if (handle === 'rotate') {
+					beginRotation(pagePoint, selectedStrokes, bounds);
+					return;
+				}
+				if (handle !== null) {
+					beginScale(handle, selectedStrokes, bounds, camera.zoom);
+					return;
+				}
+				if (pointInSelectionFrame(pagePoint, bounds, camera.zoom)) {
+					beginDrag(pagePoint);
+					return;
+				}
 			}
 		}
 
@@ -133,7 +148,7 @@ export function selectToolPointerMove(e: PointerEvent, ctx: SelectToolContext): 
 		return;
 	}
 
-	if ((phase === 'scaling' || phase === 'rotating') && transformGesture) {
+	if ((phase === 'scaling' || phase === 'rotating' || phase === 'line-resizing') && transformGesture) {
 		const camera = ctx.getCamera();
 		const containerRect = ctx.getContainerRect();
 		const pagePoint = screenToPage(camera, containerRect, e.clientX, e.clientY);
@@ -150,7 +165,7 @@ export function selectToolPointerMove(e: PointerEvent, ctx: SelectToolContext): 
 				: 1;
 			const scale = Math.min(MAX_SELECTION_SCALE, Math.max(MIN_SELECTION_SCALE, projectedScale));
 			gesture.currentTransform = uniformScaleTransform(gesture.anchor, scale);
-		} else {
+		} else if (phase === 'rotating') {
 			const center = gesture.anchor;
 			const initialAngle = Math.atan2(gesture.initialVector.y, gesture.initialVector.x);
 			const currentAngle = Math.atan2(pagePoint.y - center.y, pagePoint.x - center.x);
@@ -160,6 +175,12 @@ export function selectToolPointerMove(e: PointerEvent, ctx: SelectToolContext): 
 				angle = Math.round(angle / snap) * snap;
 			}
 			gesture.currentTransform = rotationTransform(center, angle);
+		} else {
+			gesture.currentTransform = similarityTransform(
+				gesture.anchor,
+				gesture.initialVector,
+				{ x: pagePoint.x - gesture.anchor.x, y: pagePoint.y - gesture.anchor.y },
+			);
 		}
 
 		previewSelectionTransform(ctx, gesture);
@@ -180,7 +201,7 @@ export function selectToolPointerUp(_e: PointerEvent, ctx: SelectToolContext): v
 		return;
 	}
 
-	if (phase === 'scaling' || phase === 'rotating') {
+	if (phase === 'scaling' || phase === 'rotating' || phase === 'line-resizing') {
 		finishTransform(ctx);
 		phase = 'idle';
 	}
@@ -337,6 +358,7 @@ function beginDrag(pagePoint: PagePoint): void {
 function finishDrag(ctx: SelectToolContext): void {
 	if (dragAccumulatedDelta.x === 0 && dragAccumulatedDelta.y === 0) {
 		ctx.getSvgElement()?.querySelector<SVGGElement>('.ink-canvas-selection-frame')?.removeAttribute('transform');
+		ctx.getSvgElement()?.querySelector<SVGGElement>('.ink-canvas-line-selection')?.removeAttribute('transform');
 		dragStartPage = null;
 		return;
 	}
@@ -355,6 +377,7 @@ function finishDrag(ctx: SelectToolContext): void {
 		dragAccumulatedDelta.y,
 	);
 	ctx.getSvgElement()?.querySelector<SVGGElement>('.ink-canvas-selection-frame')?.removeAttribute('transform');
+	ctx.getSvgElement()?.querySelector<SVGGElement>('.ink-canvas-line-selection')?.removeAttribute('transform');
 	ctx.undoManager.execute(command);
 
 	dragStartPage = null;
@@ -382,6 +405,8 @@ function moveSelectionVisuals(ctx: SelectToolContext, dx: number, dy: number): v
 
 	const frame = svg.querySelector<SVGGElement>('.ink-canvas-selection-frame');
 	if (frame) frame.setAttribute('transform', `translate(${dragAccumulatedDelta.x + dx} ${dragAccumulatedDelta.y + dy})`);
+	const lineFrame = svg.querySelector<SVGGElement>('.ink-canvas-line-selection');
+	if (lineFrame) lineFrame.setAttribute('transform', `translate(${dragAccumulatedDelta.x + dx} ${dragAccumulatedDelta.y + dy})`);
 }
 
 
@@ -485,6 +510,37 @@ function beginRotation(pagePoint: PagePoint, strokes: InkStroke[], bounds: Strok
 	};
 }
 
+function beginLineResize(handle: 'start' | 'end', line: StraightLineSelection): void {
+	const moving = handle === 'start' ? line.start : line.end;
+	const fixed = handle === 'start' ? line.end : line.start;
+	phase = 'line-resizing';
+	transformGesture = {
+		initialStrokes: [line.stroke],
+		anchor: fixed,
+		initialVector: { x: moving.x - fixed.x, y: moving.y - fixed.y },
+		currentTransform: IDENTITY_PAGE_TRANSFORM,
+	};
+}
+
+function similarityTransform(anchor: PagePoint, initial: PagePoint, current: PagePoint): PageTransform {
+	const initialLength = Math.hypot(initial.x, initial.y);
+	const currentLength = Math.hypot(current.x, current.y);
+	if (initialLength === 0 || currentLength === 0) return IDENTITY_PAGE_TRANSFORM;
+	const scale = Math.min(MAX_SELECTION_SCALE, Math.max(MIN_SELECTION_SCALE, currentLength / initialLength));
+	const angle = Math.atan2(current.y, current.x) - Math.atan2(initial.y, initial.x);
+	const cos = Math.cos(angle) * scale;
+	const sin = Math.sin(angle) * scale;
+	return {
+		a: cos,
+		b: sin,
+		c: -sin,
+		d: cos,
+		e: anchor.x - cos * anchor.x + sin * anchor.y,
+		f: anchor.y - sin * anchor.x - cos * anchor.y,
+		strokeScale: scale,
+	};
+}
+
 function previewSelectionTransform(ctx: SelectToolContext, gesture: TransformGesture): void {
 	const svg = ctx.getSvgElement();
 	if (!svg) return;
@@ -496,6 +552,11 @@ function previewSelectionTransform(ctx: SelectToolContext, gesture: TransformGes
 	if (frame) {
 		const t = gesture.currentTransform;
 		frame.setAttribute('transform', `matrix(${t.a} ${t.b} ${t.c} ${t.d} ${t.e} ${t.f})`);
+	}
+	const lineFrame = svg.querySelector<SVGGElement>('.ink-canvas-line-selection');
+	if (lineFrame) {
+		const t = gesture.currentTransform;
+		lineFrame.setAttribute('transform', `matrix(${t.a} ${t.b} ${t.c} ${t.d} ${t.e} ${t.f})`);
 	}
 }
 
@@ -512,6 +573,26 @@ function resetSelectionPreview(ctx: SelectToolContext): void {
 		group.setAttribute('data-offset-y', String(stroke.offset.y));
 	}
 	svg.querySelector<SVGGElement>('.ink-canvas-selection-frame')?.removeAttribute('transform');
+	svg.querySelector<SVGGElement>('.ink-canvas-line-selection')?.removeAttribute('transform');
+}
+
+function hitTestLineHandle(
+	point: PagePoint,
+	line: StraightLineSelection,
+	zoom: number,
+): 'start' | 'middle' | 'end' | null {
+	const radius = HANDLE_HIT_RADIUS_PX / zoom;
+	const handles = [
+		{ kind: 'start' as const, point: line.start },
+		{ kind: 'middle' as const, point: line.middle },
+		{ kind: 'end' as const, point: line.end },
+	];
+	let closest: { kind: 'start' | 'middle' | 'end'; distance: number } | null = null;
+	for (const handle of handles) {
+		const distance = Math.hypot(point.x - handle.point.x, point.y - handle.point.y);
+		if (distance <= radius && (!closest || distance < closest.distance)) closest = { kind: handle.kind, distance };
+	}
+	return closest?.kind ?? null;
 }
 
 function finishTransform(ctx: SelectToolContext): void {

@@ -2,3 +2,11 @@
 .ink-svg-canvas [data-stroke-group].ink-stroke--pending-erase {
 	opacity: 0.35;
 }
+
+.ink-svg-canvas .ink-precise-erase-preview {
+	opacity: 0.92;
+
+	path {
+		fill: var(--text-muted) !important;
+	}
+}

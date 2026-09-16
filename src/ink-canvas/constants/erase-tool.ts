@@ -21,3 +21,6 @@ export const ERASER_COMMIT_PREVIEW_MS = 50;
 
 /** CSS class on stroke groups while the eraser marks them for removal. */
 export const INK_STROKE_PENDING_ERASE_CLASS = 'ink-stroke--pending-erase';
+
+/** Temporary clipped overlay used while precise erasing. */
+export const INK_PRECISE_ERASE_PREVIEW_CLASS = 'ink-precise-erase-preview';

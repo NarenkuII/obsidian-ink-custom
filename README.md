@@ -9,12 +9,12 @@ This build keeps the `ink` plugin ID so existing notes, settings, and SVG files 
 
 - Pen colours: theme black/white, blue, red, and green. The selected colour remains visible in locked previews.
 - Pen tuning: configurable size and stabilization, pressure smoothing, and improved small-dot handling.
-- Selection: drag from inside the frame, large touch targets, uniform corner scaling, rotation, and finger support.
+- Selection: drag from inside the frame, large touch targets, uniform corner scaling, rotation, and finger support. A recognized line uses two endpoint handles plus a central move handle instead of a large box.
 - Clipboard: select strokes or an image, then use `Ctrl/Cmd+C` and `Ctrl/Cmd+V`; `Ctrl/Cmd+D` or the duplicate button makes an offset copy.
-- Image annotation: import a screenshot or photo with the image button. It is stored below the ink, then can be moved, scaled, rotated, duplicated, or deleted.
-- Shape recognition: hold the pointer briefly at the end of a line or closed shape. Lines, rectangles, ellipses, triangles, and common single-stroke arrows are corrected locally. Undo removes the recognized result.
-- Eraser modes: whole-stroke erasing is enabled by default. Toggle the eraser-mode button for precise partial erasing; both modes support undo.
-- Mobile layout: toolbar clusters switch to a compact layout before controls overlap on narrow iPad or phone canvases.
+- Image annotation: import a screenshot or photo with the image button. It is stored below the ink. In Select mode, long-press an unselected image to move, scale, rotate, duplicate, or delete it; the stroke marquee never captures images.
+- Shape recognition: hold the pointer still for 350 ms at the end of a line or closed shape. The live stroke snaps before lift. Lines, rectangles, perfect circles, triangles, and common single-stroke arrows are corrected locally; near-horizontal and near-vertical lines keep their starting point fixed. Undo removes the recognized result.
+- Eraser modes: whole-stroke erasing is enabled by default. Toggle the eraser-mode button for precise partial erasing; precise mode previews only the area inside the eraser disk and both modes support undo.
+- Mobile layout: smart-mode toggles stay on the left, Select/Draw/Erase stay centered, and colours move to a visible second row before controls overlap on narrow iPad or phone canvases.
 
 Imported images are resized to at most 2048 pixels and embedded in the Ink SVG. This keeps files portable across Windows, iPadOS, and Android, but image-heavy notes can still increase Git repository size.
 

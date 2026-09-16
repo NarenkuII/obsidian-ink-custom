@@ -18,7 +18,7 @@
 
 // Embedded drawing: default toolbar uses global space-between + centered tools.
 // Compact inline row when cluster bounding boxes overlap (see use-drawing-embed-toolbar-compact).
-.ddc_ink_embed .ddc_ink_drawing-editor {
+.ddc_ink_drawing-editor {
 	overflow: visible;
 
 	// No transition — layout snaps when crossing the compact threshold.
@@ -29,44 +29,64 @@
 
 	&.ddc_ink_toolbar-compact {
 		.ink_primary-menu-bar {
-			left: 50%;
-			right: auto;
-			width: max-content;
+			left: 0;
+			right: 0;
+			width: 100%;
 			min-width: 100%;
-			max-width: none;
+			max-width: 100%;
 			justify-content: center;
 			gap: 0;
-			transform: translateX(-50%);
+			transform: none;
 
 			&.ddc_ink_active {
-				transform: translate(-50%, -100%);
+				transform: translateY(-100%);
 			}
 		}
 
 		.ink_menu-bar_full {
-			flex-grow: 0;
-			width: auto;
-			justify-content: flex-start;
-			gap: 0;
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-areas:
+				'quick tools'
+				'colours colours';
+			row-gap: 6px;
+			width: 100%;
+			padding-inline: 4px;
 		}
 
-		.ink_quick-menu,
-		.ink_tool-menu {
-			border-inline-end: 1px solid var(--background-modifier-border);
-			padding-inline-end: 8px;
-			margin-inline-end: 8px;
+		.ink_quick-menu {
+			grid-area: quick;
+			gap: 4px;
+			overflow: hidden;
+			min-width: 0;
+
+			button {
+				width: 2.15em;
+				height: 2.15em;
+			}
 		}
 
 		.ink_tool-menu,
 		&.ink_dominant-hand_left .ink_tool-menu {
+			grid-area: tools;
 			position: static;
 			top: auto;
 			left: auto;
 			transform: none;
+			gap: 4px;
+
+			button {
+				width: 2.15em;
+				height: 2.15em;
+			}
 		}
 
-		.ink_other-menu {
-			display: none;
+		.ink_colour-menu {
+			grid-area: colours;
+			display: flex;
+			justify-self: center;
+			gap: 8px;
+			margin: 0;
 		}
 	}
 }
