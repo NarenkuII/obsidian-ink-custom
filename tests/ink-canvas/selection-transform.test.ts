@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { TransformStrokesCommand } from 'src/ink-canvas/commands';
 import {
 	applyPageTransform,
+	nonUniformScaleTransform,
 	rotationTransform,
 	transformStroke,
 	translationTransform,
@@ -31,6 +32,12 @@ describe('selection transforms', () => {
 		const transform = uniformScaleTransform({ x: 10, y: 10 }, 2);
 		expect(applyPageTransform({ x: 12, y: 13 }, transform))
 			.toEqual({ x: 14, y: 16 });
+	});
+
+	test('scales each axis independently around the opposite corner', () => {
+		const transform = nonUniformScaleTransform({ x: 10, y: 10 }, 2, 3);
+		expect(applyPageTransform({ x: 12, y: 13 }, transform))
+			.toEqual({ x: 14, y: 19 });
 	});
 
 	test('rotates around selection center', () => {

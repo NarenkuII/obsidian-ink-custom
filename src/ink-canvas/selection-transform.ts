@@ -35,6 +35,18 @@ export function uniformScaleTransform(anchor: PagePoint, scale: number): PageTra
 	};
 }
 
+export function nonUniformScaleTransform(anchor: PagePoint, scaleX: number, scaleY: number): PageTransform {
+	return {
+		a: scaleX,
+		b: 0,
+		c: 0,
+		d: scaleY,
+		e: anchor.x * (1 - scaleX),
+		f: anchor.y * (1 - scaleY),
+		strokeScale: Math.sqrt(Math.abs(scaleX * scaleY)),
+	};
+}
+
 export function rotationTransform(center: PagePoint, radians: number): PageTransform {
 	const cos = Math.cos(radians);
 	const sin = Math.sin(radians);

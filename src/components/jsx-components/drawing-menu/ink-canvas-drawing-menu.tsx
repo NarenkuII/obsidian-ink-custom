@@ -6,6 +6,8 @@ import { EraseIcon } from 'src/graphics/icons/erase-icon';
 import { DrawIcon } from 'src/graphics/icons/draw-icon';
 import { ExpandIcon } from 'src/graphics/icons/expand-icon';
 import { PointerIcon } from 'src/graphics/icons/pointer-icon';
+import { LockIcon } from 'src/graphics/icons/lock-icon';
+import { ResizeDiagonalIcon } from 'src/graphics/icons/resize-diagonal-icon';
 import classNames from 'classnames';
 import { TooltipButton } from 'src/components/jsx-components/tooltip-button/tooltip-button';
 import type { InkCanvasEditor, InkTool } from 'src/ink-canvas/types';
@@ -57,6 +59,7 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 	const [shapeRecognition, setShapeRecognition] = React.useState(
 		props.plugin?.settings.shapeRecognitionEnabled ?? true,
 	);
+	const [selectionAspectRatioLocked, setSelectionAspectRatioLocked] = React.useState(true);
 
 	// Sync toolbar highlight when the canvas changes tool (e.g. cmd/ctrl temporary erase).
 	React.useEffect(() => {
@@ -69,6 +72,7 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 			editor.setStrokeStyle({ color: 'currentColor' });
 			setWholeStrokeEraser(editor.isWholeStrokeEraserEnabled());
 			setShapeRecognition(editor.isShapeRecognitionEnabled());
+			setSelectionAspectRatioLocked(editor.isSelectionAspectRatioLocked());
 			unsubscribe = editor.subscribeToolChange((inkTool) => {
 				setCurTool(inkToolToMenuTool(inkTool));
 			});
@@ -119,11 +123,21 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 	function activateStrokeColour(colour: string) {
 		const editor = props.getEditor();
 		if (!editor) return;
+		if (curTool === tool.select && editor.setSelectedStrokeStyle({ color: colour })) {
+			setCurColour(colour);
+			return;
+		}
 		editor.setStrokeStyle({ color: colour });
 		editor.setTool('draw');
 		setCurColour(colour);
 		setCurTool(tool.draw);
 		props.onActivateTool?.('draw');
+	}
+
+	function toggleSelectionAspectRatio() {
+		const next = !selectionAspectRatioLocked;
+		setSelectionAspectRatioLocked(next);
+		props.getEditor()?.setSelectionAspectRatioLocked(next);
 	}
 
 	function toggleEraserMode() {
@@ -185,6 +199,15 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 				<TooltipButton tooltip='Import image' onClick={() => imageInputRef.current?.click()}>
 					<span className='ink_tool-symbol' aria-hidden='true'>▧</span>
 				</TooltipButton>
+				{curTool === tool.select && (
+					<TooltipButton
+						tooltip={selectionAspectRatioLocked ? 'Keep selection proportions' : 'Free selection scaling'}
+						className={selectionAspectRatioLocked ? 'ink_menu-toggle--active' : undefined}
+						onClick={toggleSelectionAspectRatio}
+					>
+						{selectionAspectRatioLocked ? <LockIcon /> : <ResizeDiagonalIcon />}
+					</TooltipButton>
+				)}
 				<TooltipButton
 					tooltip={wholeStrokeEraser ? 'Whole-stroke eraser' : 'Precise eraser'}
 					className={wholeStrokeEraser ? 'ink_menu-toggle--active' : undefined}

@@ -2,6 +2,7 @@ import { screenToPage } from '../camera';
 import { MoveStrokesCommand, TransformStrokesCommand } from '../commands';
 import {
 	IDENTITY_PAGE_TRANSFORM,
+	nonUniformScaleTransform,
 	rotationTransform,
 	svgMatrixForStroke,
 	transformStroke,
@@ -26,6 +27,7 @@ export interface SelectToolContext {
 	getContainerRect: () => DOMRect;
 	getSvgElement: () => SVGSVGElement | null;
 	getSelectedStrokeIds: () => Set<string>;
+	getSelectionAspectRatioLocked: () => boolean;
 	setSelectedStrokeIds: (ids: Set<string>) => void;
 	onSelectionChange?: () => void;
 }
@@ -168,16 +170,21 @@ export function selectToolPointerMove(e: PointerEvent, ctx: SelectToolContext): 
 		const gesture = transformGesture;
 
 		if (phase === 'scaling') {
-			const denominator = gesture.initialVector.x ** 2 + gesture.initialVector.y ** 2;
 			const currentVector = {
 				x: pagePoint.x - gesture.anchor.x,
 				y: pagePoint.y - gesture.anchor.y,
 			};
-			const projectedScale = denominator > 0
-				? (currentVector.x * gesture.initialVector.x + currentVector.y * gesture.initialVector.y) / denominator
-				: 1;
-			const scale = Math.min(MAX_SELECTION_SCALE, Math.max(MIN_SELECTION_SCALE, projectedScale));
-			gesture.currentTransform = uniformScaleTransform(gesture.anchor, scale);
+			if (ctx.getSelectionAspectRatioLocked()) {
+				const denominator = gesture.initialVector.x ** 2 + gesture.initialVector.y ** 2;
+				const projectedScale = denominator > 0
+					? (currentVector.x * gesture.initialVector.x + currentVector.y * gesture.initialVector.y) / denominator
+					: 1;
+				gesture.currentTransform = uniformScaleTransform(gesture.anchor, clampSelectionScale(projectedScale));
+			} else {
+				const scaleX = gesture.initialVector.x === 0 ? 1 : clampSelectionScale(currentVector.x / gesture.initialVector.x);
+				const scaleY = gesture.initialVector.y === 0 ? 1 : clampSelectionScale(currentVector.y / gesture.initialVector.y);
+				gesture.currentTransform = nonUniformScaleTransform(gesture.anchor, scaleX, scaleY);
+			}
 		} else if (phase === 'rotating') {
 			const center = gesture.anchor;
 			const initialAngle = Math.atan2(gesture.initialVector.y, gesture.initialVector.x);
@@ -199,6 +206,10 @@ export function selectToolPointerMove(e: PointerEvent, ctx: SelectToolContext): 
 		previewSelectionTransform(ctx, gesture);
 		return;
 	}
+}
+
+function clampSelectionScale(scale: number): number {
+	return Math.min(MAX_SELECTION_SCALE, Math.max(MIN_SELECTION_SCALE, scale));
 }
 
 export function selectToolPointerUp(_e: PointerEvent, ctx: SelectToolContext): void {

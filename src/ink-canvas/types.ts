@@ -157,6 +157,9 @@ export interface InkCanvasEditor {
 
 	// Selection
 	getSelectedStrokeIds(): Set<string>;
+	setSelectedStrokeStyle(style: Partial<InkStrokeStyle>): boolean;
+	isSelectionAspectRatioLocked(): boolean;
+	setSelectionAspectRatioLocked(locked: boolean): void;
 	deleteSelectedStrokes(): void;
 	copySelectedStrokes(): boolean;
 	pasteCopiedStrokes(): boolean;

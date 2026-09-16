@@ -22,6 +22,7 @@ describe('stroke selection pointer priority', () => {
 			getContainerRect: () => ({ left: 0, top: 0, width: 500, height: 500 } as DOMRect),
 			getSvgElement: () => null,
 			getSelectedStrokeIds: () => new Set([stroke.id]),
+			getSelectionAspectRatioLocked: () => true,
 			setSelectedStrokeIds: jest.fn(),
 		};
 		const event = { clientX: 50, clientY: 14, target: image } as unknown as PointerEvent;

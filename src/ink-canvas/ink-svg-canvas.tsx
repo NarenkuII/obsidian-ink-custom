@@ -14,7 +14,7 @@ import {
 } from './stroke-viewport-culling';
 import { cropWritingStrokeHeightInvitingly } from 'src/components/formats/current/utils/tldraw-helpers';
 import { WRITING_LINE_HEIGHT, WRITING_PAGE_WIDTH } from 'src/constants';
-import { AddImagesCommand, AddStrokeCommand, AddStrokesCommand, EraseAllCommand, RemoveImagesCommand, RemoveStrokesCommand } from './commands';
+import { AddImagesCommand, AddStrokeCommand, AddStrokesCommand, EraseAllCommand, RemoveImagesCommand, RemoveStrokesCommand, TransformStrokesCommand } from './commands';
 import { drawToolPointerDown, drawToolPointerMove, drawToolPointerUp, drawToolPointerCancel } from './tools/draw-tool';
 import { eraseToolPointerDown, eraseToolPointerMove, eraseToolPointerUp, eraseToolPointerCancel } from './tools/erase-tool';
 import { activeStrokeSelectionContainsPointer, selectToolPointerDown, selectToolPointerMove, selectToolPointerUp, selectToolPointerCancel } from './tools/select-tool';
@@ -192,6 +192,11 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
+	const selectedIdsRef = useRef(selectedIds);
+	selectedIdsRef.current = selectedIds;
+	const selectedImageIdsRef = useRef(selectedImageIds);
+	selectedImageIdsRef.current = selectedImageIds;
+	const selectionAspectRatioLockedRef = useRef(true);
 	const [, forceRender] = useState(0);
 	// Bumped on note/window scroll so render-time culling re-evaluates without touching StrokeStore.
 	const [viewportRevision, setViewportRevision] = useState(0);
@@ -235,6 +240,14 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 	toolRef.current = tool;
 	const toolChangeListenersRef = useRef(new Set<(t: InkTool) => void>());
 	const applyToolChange = useCallback((nextTool: InkTool) => {
+		if (toolRef.current !== nextTool) {
+			const emptyStrokeSelection = new Set<string>();
+			const emptyImageSelection = new Set<string>();
+			selectedIdsRef.current = emptyStrokeSelection;
+			selectedImageIdsRef.current = emptyImageSelection;
+			setSelectedIds(emptyStrokeSelection);
+			setSelectedImageIds(emptyImageSelection);
+		}
 		setTool(nextTool);
 		toolChangeListenersRef.current.forEach((listener) => listener(nextTool));
 	}, []);
@@ -248,10 +261,6 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 			return next;
 		});
 	}, [props.penStrokeSize]);
-	const selectedIdsRef = useRef(selectedIds);
-	selectedIdsRef.current = selectedIds;
-	const selectedImageIdsRef = useRef(selectedImageIds);
-	selectedImageIdsRef.current = selectedImageIds;
 	const wholeStrokeEraserRef = useRef(props.wholeStrokeEraser ?? true);
 	const shapeRecognitionEnabledRef = useRef(props.shapeRecognitionEnabled ?? true);
 	useEffect(() => {
@@ -606,6 +615,22 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 			setGridEnabled: (enabled: boolean) => setGridEnabledHandlerRef.current(enabled),
 
 			getSelectedStrokeIds: () => new Set(selectedIdsRef.current),
+			setSelectedStrokeStyle: (partial: Partial<InkStrokeStyle>) => {
+				const previous = Array.from(selectedIdsRef.current)
+					.map((id) => storeRef.current.getById(id))
+					.filter((stroke): stroke is InkStroke => stroke !== undefined);
+				if (previous.length === 0) return false;
+				const updated = previous.map((stroke) => ({
+					...stroke,
+					style: { ...stroke.style, ...partial },
+				}));
+				undoManagerRef.current.execute(new TransformStrokesCommand(storeRef.current, previous, updated));
+				return true;
+			},
+			isSelectionAspectRatioLocked: () => selectionAspectRatioLockedRef.current,
+			setSelectionAspectRatioLocked: (locked: boolean) => {
+				selectionAspectRatioLockedRef.current = locked;
+			},
 			getSelectedImageIds: () => new Set(selectedImageIdsRef.current),
 			deleteSelectedStrokes: () => {
 				const ids = Array.from(selectedIdsRef.current);
@@ -770,6 +795,7 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 		getContainerRect,
 		getSvgElement: () => svgRef.current,
 		getSelectedStrokeIds: () => selectedIdsRef.current,
+		getSelectionAspectRatioLocked: () => selectionAspectRatioLockedRef.current,
 		setSelectedStrokeIds: (ids: Set<string>) => {
 			setSelectedIds(ids);
 			if (ids.size > 0) setSelectedImageIds(new Set());
