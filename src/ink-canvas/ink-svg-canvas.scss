@@ -4,9 +4,11 @@
 }
 
 .ink-svg-canvas .ink-precise-erase-preview {
-	opacity: 0.92;
+	// Match the whole-stroke erase preview exactly, but clip it to the eraser disk.
+	opacity: 0.35;
+}
 
-	path {
-		fill: var(--text-muted) !important;
-	}
+.ink-svg-canvas [data-ink-image-id] {
+	-webkit-touch-callout: none;
+	user-select: none;
 }

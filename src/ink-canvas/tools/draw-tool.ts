@@ -69,7 +69,8 @@ const SLOW_DRAW_TIP_REPLACE_APPEND_MS = 40;
 
 let activeStroke: ActiveStroke | null = null;
 let shapeRecognitionTimer: number | null = null;
-const SHAPE_RECOGNITION_HOLD_MS = 350;
+const SHAPE_RECOGNITION_HOLD_MS = 250;
+const SHAPE_PREVIEW_HYSTERESIS_SCREEN_PX = 12;
 
 interface RawStrokeSample {
 	clientX: number;
@@ -243,11 +244,13 @@ function appendDrawSamplesFromPointerEvent(
 	const camera = ctx.getCamera();
 	const containerRect = ctx.getContainerRect();
 	const samples = getPointerSamples(e);
+	const hasShapePreview = activeStroke.shapePreviewSourcePoints !== undefined;
 	const comparisonPoints = activeStroke.shapePreviewSourcePoints ?? activeStroke.points;
 	const comparisonTip = comparisonPoints[comparisonPoints.length - 1];
+	const movementThreshold = (hasShapePreview ? SHAPE_PREVIEW_HYSTERESIS_SCREEN_PX : 1) / camera.zoom;
 	const meaningfulMove = samples.some((sample) => {
 		const point = screenToPage(camera, containerRect, sample.clientX, sample.clientY);
-		return Math.hypot(point.x - comparisonTip[0], point.y - comparisonTip[1]) >= 1 / camera.zoom;
+		return Math.hypot(point.x - comparisonTip[0], point.y - comparisonTip[1]) >= movementThreshold;
 	});
 	if (activeStroke.shapePreviewSourcePoints) {
 		if (!meaningfulMove && !options.forceCommitFinalPoint) return false;

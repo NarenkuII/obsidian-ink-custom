@@ -47,14 +47,19 @@ describe('draw tool live shape preview', () => {
 		drawToolPointerMove(pointer(100, 8, 30), ctx);
 		const freehandPath = livePath.getAttribute('d');
 
-		jest.advanceTimersByTime(349);
+		jest.advanceTimersByTime(249);
 		expect(livePath.getAttribute('d')).toBe(freehandPath);
 		expect(store.count()).toBe(0);
 
 		jest.advanceTimersByTime(1);
-		expect(livePath.getAttribute('d')).not.toBe(freehandPath);
+		const snappedPath = livePath.getAttribute('d');
+		expect(snappedPath).not.toBe(freehandPath);
 
-		drawToolPointerUp(pointer(100, 8, 380), ctx);
+		// Pencil jitter after recognition must not make the snapped preview disappear.
+		drawToolPointerMove(pointer(106, 9, 280), ctx);
+		expect(livePath.getAttribute('d')).toBe(snappedPath);
+
+		drawToolPointerUp(pointer(106, 9, 300), ctx);
 		const stroke = store.getAll()[0];
 		expect(stroke.points).toHaveLength(2);
 		expect(stroke.points[0].slice(0, 2)).toEqual([0, 5]);

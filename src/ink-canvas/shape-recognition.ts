@@ -1,11 +1,15 @@
 import type { InkPoint } from './types';
 
-export type RecognizedShape = 'line' | 'rectangle' | 'circle' | 'triangle' | 'arrow';
+export type RecognizedShape = 'line' | 'rectangle' | 'circle' | 'arrow';
 
 export interface ShapeRecognitionResult {
 	shape: RecognizedShape;
 	points: InkPoint[];
 }
+
+const CLOSED_SAMPLE_COUNT = 64;
+const RECTANGLE_TEMPLATE = makeRectangleTemplate(CLOSED_SAMPLE_COUNT);
+const CIRCLE_TEMPLATE = makeCircleTemplate(CLOSED_SAMPLE_COUNT);
 
 export function recognizeInkShape(points: InkPoint[]): ShapeRecognitionResult | null {
 	if (points.length < 2) return null;
@@ -18,7 +22,7 @@ export function recognizeInkShape(points: InkPoint[]): ShapeRecognitionResult | 
 	const end = points[points.length - 1];
 	const endpointDistance = distance(start, end);
 	const pressure = averagePressure(points);
-	if (endpointDistance / pathLength >= 0.965) {
+	if (looksLikeLine(points, pathLength, diagonal)) {
 		return { shape: 'line', points: snappedLinePoints(start, end, pressure) };
 	}
 
@@ -26,26 +30,64 @@ export function recognizeInkShape(points: InkPoint[]): ShapeRecognitionResult | 
 	const arrow = recognizeArrow(simplifiedOpen, pressure, diagonal);
 	if (arrow) return arrow;
 
-	const closed = endpointDistance <= Math.max(14, diagonal * 0.2);
+	const closed = endpointDistance <= Math.max(18, diagonal * 0.32);
 	if (!closed) return null;
-	const loop = points.slice(0, -1);
-	const corners = findPolygonCorners(loop, diagonal);
-	if (corners.length === 3) {
-		return { shape: 'triangle', points: closePolygon(corners, pressure) };
-	}
-	const rectangularPerimeterRatio = pathLength / Math.max(1, 2 * (bounds.width + bounds.height));
-	if (corners.length === 4 && rectangularPerimeterRatio > 0.88 && isRectangle(corners)) {
+	const closedPath = [...points, copyPoint(start)];
+	const samples = normalizeClosedGesture(resamplePolyline(closedPath, CLOSED_SAMPLE_COUNT));
+	const rectangleScore = cyclicPathDistance(samples, RECTANGLE_TEMPLATE);
+	const circleScore = cyclicPathDistance(samples, CIRCLE_TEMPLATE);
+
+	// $1-style normalized template matching is much less sensitive to drawing speed
+	// and raw pointer density than corner counting on the original samples.
+	if (rectangleScore <= 0.17 && rectangleScore + 0.012 < circleScore) {
 		return { shape: 'rectangle', points: rectanglePoints(bounds, pressure) };
 	}
 
 	const aspect = bounds.width / Math.max(1, bounds.height);
-	if (aspect > 0.72 && aspect < 1.38 && circleRadialVariation(loop, bounds) < 0.24) {
+	if (aspect >= 0.64 && aspect <= 1.56 && circleScore <= 0.17 && circleScore <= rectangleScore) {
 		return { shape: 'circle', points: circlePoints(bounds, pressure) };
 	}
 	return null;
 }
 
-const AXIS_SNAP_RADIANS = 10 * Math.PI / 180;
+function looksLikeLine(points: InkPoint[], pathLength: number, diagonal: number): boolean {
+	const endpointProgress = distance(points[0], points[points.length - 1]) / pathLength;
+	if (endpointProgress < 0.72) return false;
+
+	const centroid = points.reduce(
+		(sum, point) => ({ x: sum.x + point[0], y: sum.y + point[1] }),
+		{ x: 0, y: 0 },
+	);
+	centroid.x /= points.length;
+	centroid.y /= points.length;
+	let xx = 0;
+	let yy = 0;
+	let xy = 0;
+	for (const point of points) {
+		const dx = point[0] - centroid.x;
+		const dy = point[1] - centroid.y;
+		xx += dx * dx;
+		yy += dy * dy;
+		xy += dx * dy;
+	}
+	const angle = 0.5 * Math.atan2(2 * xy, xx - yy);
+	const axis = { x: Math.cos(angle), y: Math.sin(angle) };
+	const normal = { x: -axis.y, y: axis.x };
+	const projections = points.map((point) => ({
+		along: (point[0] - centroid.x) * axis.x + (point[1] - centroid.y) * axis.y,
+		across: (point[0] - centroid.x) * normal.x + (point[1] - centroid.y) * normal.y,
+	}));
+	const rmsError = Math.sqrt(projections.reduce((sum, point) => sum + point.across ** 2, 0) / projections.length);
+	let projectedTravel = 0;
+	for (let i = 1; i < projections.length; i++) {
+		projectedTravel += Math.abs(projections[i].along - projections[i - 1].along);
+	}
+	const projectedSpan = Math.max(...projections.map((point) => point.along))
+		- Math.min(...projections.map((point) => point.along));
+	return rmsError / diagonal <= 0.075 && projectedSpan / Math.max(1, projectedTravel) >= 0.7;
+}
+
+const AXIS_SNAP_RADIANS = 14 * Math.PI / 180;
 
 function snappedLinePoints(start: InkPoint, end: InkPoint, pressure: number): InkPoint[] {
 	const dx = end[0] - start[0];
@@ -71,10 +113,9 @@ function recognizeArrow(points: InkPoint[], pressure: number, diagonal: number):
 		const headSizeA = distance(tipA, wingA);
 		const headSizeB = distance(tipB, wingB);
 		if (headSizeA < diagonal * 0.08 || headSizeB < diagonal * 0.08) continue;
-		const shaftStart = points[0];
 		return {
 			shape: 'arrow',
-			points: [shaftStart, tipA, wingA, tipA, wingB].map((point) => withPressure(point, pressure)),
+			points: [points[0], tipA, wingA, tipA, wingB].map((point) => withPressure(point, pressure)),
 		};
 	}
 	return null;
@@ -93,45 +134,88 @@ function circlePoints(bounds: ReturnType<typeof pointBounds>, pressure: number):
 	const cx = bounds.minX + bounds.width / 2;
 	const cy = bounds.minY + bounds.height / 2;
 	const radius = (bounds.width + bounds.height) / 4;
-	const points: InkPoint[] = [];
+	const result: InkPoint[] = [];
 	for (let i = 0; i <= 40; i++) {
 		const angle = (i / 40) * Math.PI * 2;
-		points.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius, pressure]);
+		result.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius, pressure]);
 	}
-	return points;
+	return result;
 }
 
-function circleRadialVariation(points: InkPoint[], bounds: ReturnType<typeof pointBounds>): number {
-	const cx = bounds.minX + bounds.width / 2;
-	const cy = bounds.minY + bounds.height / 2;
-	const radii = points.map((point) => Math.hypot(point[0] - cx, point[1] - cy));
-	const mean = radii.reduce((sum, radius) => sum + radius, 0) / radii.length;
-	if (mean === 0) return Infinity;
-	return Math.sqrt(radii.reduce((sum, radius) => sum + (radius - mean) ** 2, 0) / radii.length) / mean;
+/** Equal-distance resampling, following the normalization stage of the $1 recognizer. */
+function resamplePolyline(points: InkPoint[], count: number): InkPoint[] {
+	const totalLength = polylineLength(points);
+	if (totalLength === 0 || count <= 1) return [copyPoint(points[0])];
+	const interval = totalLength / (count - 1);
+	const result: InkPoint[] = [copyPoint(points[0])];
+	let distanceSinceSample = 0;
+	let previous = copyPoint(points[0]);
+	for (let i = 1; i < points.length && result.length < count; i++) {
+		const current = copyPoint(points[i]);
+		let segmentLength = distance(previous, current);
+		while (segmentLength > 0 && distanceSinceSample + segmentLength >= interval && result.length < count) {
+			const ratio = (interval - distanceSinceSample) / segmentLength;
+			const sample: InkPoint = [
+				previous[0] + (current[0] - previous[0]) * ratio,
+				previous[1] + (current[1] - previous[1]) * ratio,
+				previous[2] + (current[2] - previous[2]) * ratio,
+			];
+			result.push(sample);
+			previous = sample;
+			segmentLength = distance(previous, current);
+			distanceSinceSample = 0;
+		}
+		distanceSinceSample += segmentLength;
+		previous = current;
+	}
+	while (result.length < count) result.push(copyPoint(points[points.length - 1]));
+	return result;
 }
 
-function findPolygonCorners(points: InkPoint[], diagonal: number): InkPoint[] {
-	for (const factor of [0.055, 0.075, 0.1, 0.13]) {
-		const polygon = simplify([...points, points[0]], Math.max(3, diagonal * factor));
-		const corners = removeClosingDuplicate(polygon);
-		if (corners.length === 3 || corners.length === 4) return corners;
-	}
-	return [];
+function normalizeClosedGesture(points: InkPoint[]): InkPoint[] {
+	const bounds = pointBounds(points);
+	return points.map((point) => [
+		(point[0] - bounds.minX) / Math.max(1, bounds.width),
+		(point[1] - bounds.minY) / Math.max(1, bounds.height),
+		point[2],
+	]);
 }
 
-function isRectangle(points: InkPoint[]): boolean {
-	for (let i = 0; i < 4; i++) {
-		const prev = points[(i + 3) % 4];
-		const cur = points[i];
-		const next = points[(i + 1) % 4];
-		const ax = prev[0] - cur[0];
-		const ay = prev[1] - cur[1];
-		const bx = next[0] - cur[0];
-		const by = next[1] - cur[1];
-		const denominator = Math.hypot(ax, ay) * Math.hypot(bx, by);
-		if (denominator === 0 || Math.abs((ax * bx + ay * by) / denominator) > 0.38) return false;
+function cyclicPathDistance(candidate: InkPoint[], template: InkPoint[]): number {
+	let best = Infinity;
+	const count = Math.min(candidate.length, template.length);
+	for (const direction of [1, -1]) {
+		for (let shift = 0; shift < count; shift++) {
+			let total = 0;
+			for (let i = 0; i < count; i++) {
+				const candidateIndex = (shift + direction * i + count * 2) % count;
+				total += distance(candidate[candidateIndex], template[i]);
+			}
+			best = Math.min(best, total / count);
+		}
 	}
-	return true;
+	return best;
+}
+
+function makeRectangleTemplate(count: number): InkPoint[] {
+	const result: InkPoint[] = [];
+	for (let i = 0; i < count; i++) {
+		const t = i / count * 4;
+		if (t < 1) result.push([t, 0, 0.5]);
+		else if (t < 2) result.push([1, t - 1, 0.5]);
+		else if (t < 3) result.push([3 - t, 1, 0.5]);
+		else result.push([0, 4 - t, 0.5]);
+	}
+	return result;
+}
+
+function makeCircleTemplate(count: number): InkPoint[] {
+	const result: InkPoint[] = [];
+	for (let i = 0; i < count; i++) {
+		const angle = i / count * Math.PI * 2 - Math.PI / 2;
+		result.push([0.5 + Math.cos(angle) * 0.5, 0.5 + Math.sin(angle) * 0.5, 0.5]);
+	}
+	return result;
 }
 
 function simplify(points: InkPoint[], epsilon: number): InkPoint[] {
@@ -168,11 +252,6 @@ function pointBounds(points: InkPoint[]) {
 	return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
 
-function removeClosingDuplicate(points: InkPoint[]): InkPoint[] {
-	if (points.length > 1 && distance(points[0], points[points.length - 1]) < 0.001) return points.slice(0, -1);
-	return points;
-}
-
 function closePolygon(points: InkPoint[], pressure: number): InkPoint[] {
 	return [...points, points[0]].map((point) => withPressure(point, pressure));
 }
@@ -193,4 +272,8 @@ function averagePressure(points: InkPoint[]): number {
 
 function withPressure(point: InkPoint, pressure: number): InkPoint {
 	return [point[0], point[1], pressure];
+}
+
+function copyPoint(point: InkPoint): InkPoint {
+	return [point[0], point[1], point[2]];
 }

@@ -34,7 +34,7 @@ let pendingLongPress: {
 } | null = null;
 const HANDLE_RADIUS_PX = 20;
 const ROTATE_OFFSET_PX = 34;
-const LONG_PRESS_MS = 450;
+const LONG_PRESS_MS = 350;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 export function imageSelectPointerDown(e: PointerEvent, ctx: ImageSelectToolContext): boolean {
@@ -56,7 +56,10 @@ export function imageSelectPointerDown(e: PointerEvent, ctx: ImageSelectToolCont
 	const target = e.target as Element | null;
 	const imageElement = target?.closest?.('[data-ink-image-id]');
 	const imageId = imageElement?.getAttribute('data-ink-image-id');
-	const image = imageId ? ctx.store.getById(imageId) : undefined;
+	const targetImage = imageId ? ctx.store.getById(imageId) : undefined;
+	// Mobile WebKit can retarget SVG <image> pointer events to the root <svg>.
+	// Fall back to a geometric top-to-bottom hit test so finger and Pencil behave alike.
+	const image = targetImage ?? [...ctx.store.getAll()].reverse().find((candidate) => pointInsideImage(point, candidate));
 	if (!image) return false;
 	cancelPendingLongPress();
 	pendingLongPress = {

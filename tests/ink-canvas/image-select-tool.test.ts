@@ -53,12 +53,21 @@ describe('image select long press', () => {
 	it('selects after a long press and allows an undoable drag', () => {
 		const { ctx, imageElement, getSelected } = setup();
 		imageSelectPointerDown(pointer(imageElement), ctx);
-		jest.advanceTimersByTime(450);
+		jest.advanceTimersByTime(350);
 		expect(getSelected()).toEqual(new Set(['image']));
 		expect(imageSelectPointerMove(pointer(imageElement, 45, 30), ctx)).toBe(true);
 		expect(imageSelectPointerUp(ctx)).toBe(true);
 		expect(ctx.store.getById('image')).toMatchObject({ x: 25, y: 10 });
 		expect(ctx.undoManager.canUndo()).toBe(true);
 		imageSelectPointerCancel(ctx);
+	});
+
+	it('finds an image geometrically when mobile WebKit targets the root SVG', () => {
+		const { ctx, getSelected } = setup();
+		const svg = ctx.getSvgElement()!;
+		expect(imageSelectPointerDown(pointer(svg, 30, 30), ctx)).toBe(true);
+		jest.advanceTimersByTime(350);
+		expect(getSelected()).toEqual(new Set(['image']));
+		expect(imageSelectPointerUp(ctx)).toBe(true);
 	});
 });

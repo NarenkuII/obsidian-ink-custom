@@ -197,7 +197,7 @@ export const InkCanvasDrawingMenu = React.forwardRef<HTMLDivElement, InkCanvasDr
 					className={shapeRecognition ? 'ink_menu-toggle--active' : undefined}
 					onClick={toggleShapeRecognition}
 				>
-					<span className='ink_tool-symbol' aria-hidden='true'>△</span>
+					<span className='ink_tool-symbol' aria-hidden='true'>□</span>
 				</TooltipButton>
 			{(props.showFingerDrawingToggle || props.onExpandClick) && (<>
 					{props.onExpandClick && (
