@@ -33,7 +33,7 @@ describe('recognizeInkShape', () => {
 			p(50, 99), p(0, 100), p(1, 50), p(0, 0),
 		]);
 		expect(result?.shape).toBe('rectangle');
-		expect(result?.points).toHaveLength(5);
+		expect(result?.points).toHaveLength(49);
 	});
 
 	it('recognizes an uneven rectangle with rounded hand-drawn corners', () => {
@@ -43,7 +43,7 @@ describe('recognizeInkShape', () => {
 			p(3, 58), p(0, 46), p(2, 19), p(4, 3),
 		]);
 		expect(result?.shape).toBe('rectangle');
-		expect(result?.points).toHaveLength(5);
+		expect(result?.points).toHaveLength(49);
 	});
 
 	it('recognizes a circle and outputs equal radii', () => {

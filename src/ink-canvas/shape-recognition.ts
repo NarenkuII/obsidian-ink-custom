@@ -36,15 +36,20 @@ export function recognizeInkShape(points: InkPoint[]): ShapeRecognitionResult | 
 	const samples = normalizeClosedGesture(resamplePolyline(closedPath, CLOSED_SAMPLE_COUNT));
 	const rectangleScore = cyclicPathDistance(samples, RECTANGLE_TEMPLATE);
 	const circleScore = cyclicPathDistance(samples, CIRCLE_TEMPLATE);
+	const boundaryError = rectangleBoundaryError(samples);
+	const sharpCorners = countSharpCornerClusters(samples);
 
 	// $1-style normalized template matching is much less sensitive to drawing speed
 	// and raw pointer density than corner counting on the original samples.
-	if (rectangleScore <= 0.17 && rectangleScore + 0.012 < circleScore) {
+	if (
+		rectangleScore <= 0.23
+		&& (boundaryError <= 0.03 || (boundaryError <= 0.06 && sharpCorners >= 3 && sharpCorners <= 6))
+	) {
 		return { shape: 'rectangle', points: rectanglePoints(bounds, pressure) };
 	}
 
 	const aspect = bounds.width / Math.max(1, bounds.height);
-	if (aspect >= 0.64 && aspect <= 1.56 && circleScore <= 0.17 && circleScore <= rectangleScore) {
+	if (aspect >= 0.64 && aspect <= 1.56 && circleScore <= 0.17 && circleScore < rectangleScore) {
 		return { shape: 'circle', points: circlePoints(bounds, pressure) };
 	}
 	return null;
@@ -122,12 +127,28 @@ function recognizeArrow(points: InkPoint[], pressure: number, diagonal: number):
 }
 
 function rectanglePoints(bounds: ReturnType<typeof pointBounds>, pressure: number): InkPoint[] {
-	return closePolygon([
+	const corners: InkPoint[] = [
 		[bounds.minX, bounds.minY, pressure],
 		[bounds.maxX, bounds.minY, pressure],
 		[bounds.maxX, bounds.maxY, pressure],
 		[bounds.minX, bounds.maxY, pressure],
-	], pressure);
+	];
+	const result: InkPoint[] = [];
+	const samplesPerSide = 12;
+	for (let side = 0; side < corners.length; side++) {
+		const from = corners[side];
+		const to = corners[(side + 1) % corners.length];
+		for (let i = 0; i < samplesPerSide; i++) {
+			const t = i / samplesPerSide;
+			result.push([
+				from[0] + (to[0] - from[0]) * t,
+				from[1] + (to[1] - from[1]) * t,
+				pressure,
+			]);
+		}
+	}
+	result.push(copyPoint(result[0]));
+	return result;
 }
 
 function circlePoints(bounds: ReturnType<typeof pointBounds>, pressure: number): InkPoint[] {
@@ -195,6 +216,36 @@ function cyclicPathDistance(candidate: InkPoint[], template: InkPoint[]): number
 		}
 	}
 	return best;
+}
+
+function rectangleBoundaryError(points: InkPoint[]): number {
+	return points.reduce((sum, point) => {
+		const distanceToBoundary = Math.min(point[0], 1 - point[0], point[1], 1 - point[1]);
+		return sum + Math.max(0, distanceToBoundary);
+	}, 0) / points.length;
+}
+
+function countSharpCornerClusters(points: InkPoint[]): number {
+	const count = points.length;
+	const window = 3;
+	const candidates: boolean[] = [];
+	for (let i = 0; i < count; i++) {
+		const before = points[(i - window + count) % count];
+		const current = points[i];
+		const after = points[(i + window) % count];
+		const ax = current[0] - before[0];
+		const ay = current[1] - before[1];
+		const bx = after[0] - current[0];
+		const by = after[1] - current[1];
+		const denominator = Math.hypot(ax, ay) * Math.hypot(bx, by);
+		const cosine = denominator === 0 ? 1 : Math.max(-1, Math.min(1, (ax * bx + ay * by) / denominator));
+		candidates.push(Math.acos(cosine) >= 42 * Math.PI / 180);
+	}
+	let clusters = 0;
+	for (let i = 0; i < count; i++) {
+		if (candidates[i] && !candidates[(i - 1 + count) % count]) clusters++;
+	}
+	return clusters;
 }
 
 function makeRectangleTemplate(count: number): InkPoint[] {

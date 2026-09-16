@@ -58,6 +58,19 @@ const ROTATE_HANDLE_OFFSET_PX = 30;
 const MIN_SELECTION_SCALE = 0.1;
 const MAX_SELECTION_SCALE = 10;
 
+export function activeStrokeSelectionContainsPointer(e: PointerEvent, ctx: SelectToolContext): boolean {
+	if (ctx.getSelectedStrokeIds().size === 0) return false;
+	const camera = ctx.getCamera();
+	const pagePoint = screenToPage(camera, ctx.getContainerRect(), e.clientX, e.clientY);
+	const selectedStrokes = getSelectedStrokes(ctx);
+	if (selectedStrokes.length === 0) return false;
+	const line = getStraightLineSelection(selectedStrokes);
+	if (line) return hitTestLineHandle(pagePoint, line, camera.zoom) !== null;
+	const bounds = computeStrokesBounds(selectedStrokes);
+	return hitTestSelectionHandle(pagePoint, bounds, camera.zoom) !== null
+		|| pointInSelectionFrame(pagePoint, bounds, camera.zoom);
+}
+
 
 export function selectToolPointerDown(e: PointerEvent, ctx: SelectToolContext): void {
 	const camera = ctx.getCamera();

@@ -4,7 +4,15 @@
 }
 
 .ink-svg-canvas .ink-precise-erase-preview {
-	// Match the whole-stroke erase preview exactly, but clip it to the eraser disk.
+	opacity: 1;
+}
+
+.ink-svg-canvas .ink-precise-erase-preview-cover path {
+	fill: var(--background-primary) !important;
+}
+
+.ink-svg-canvas .ink-precise-erase-preview-faded {
+	// Match the whole-stroke erase preview after hiding the original pixels below it.
 	opacity: 0.35;
 }
 

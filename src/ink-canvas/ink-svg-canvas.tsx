@@ -17,7 +17,7 @@ import { WRITING_LINE_HEIGHT, WRITING_PAGE_WIDTH } from 'src/constants';
 import { AddImagesCommand, AddStrokeCommand, AddStrokesCommand, EraseAllCommand, RemoveImagesCommand, RemoveStrokesCommand } from './commands';
 import { drawToolPointerDown, drawToolPointerMove, drawToolPointerUp, drawToolPointerCancel } from './tools/draw-tool';
 import { eraseToolPointerDown, eraseToolPointerMove, eraseToolPointerUp, eraseToolPointerCancel } from './tools/erase-tool';
-import { selectToolPointerDown, selectToolPointerMove, selectToolPointerUp, selectToolPointerCancel } from './tools/select-tool';
+import { activeStrokeSelectionContainsPointer, selectToolPointerDown, selectToolPointerMove, selectToolPointerUp, selectToolPointerCancel } from './tools/select-tool';
 import { FingerBlocker } from 'src/components/jsx-components/finger-blocker/finger-blocker';
 import { resolveInkTouchGestureMode } from 'src/logic/touch-gesture-policy';
 import type { StrokeInputEditorKind } from 'src/logic/device-settings/device-settings-types';
@@ -1028,7 +1028,10 @@ export function InkSvgCanvas(props: InkSvgCanvasProps): React.JSX.Element {
 			if (toolRef.current === 'draw') drawToolPointerDown(e.nativeEvent, drawCtx);
 			if (toolRef.current === 'erase') eraseToolPointerDown(e.nativeEvent, eraseCtx);
 			if (toolRef.current === 'select') {
-				if (!imageSelectPointerDown(e.nativeEvent, imageSelectCtx)) {
+				if (activeStrokeSelectionContainsPointer(e.nativeEvent, selectCtx)) {
+					setSelectedImageIds(new Set());
+					selectToolPointerDown(e.nativeEvent, selectCtx);
+				} else if (!imageSelectPointerDown(e.nativeEvent, imageSelectCtx)) {
 					setSelectedImageIds(new Set());
 					selectToolPointerDown(e.nativeEvent, selectCtx);
 				}

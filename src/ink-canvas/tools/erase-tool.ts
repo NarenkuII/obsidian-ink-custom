@@ -201,10 +201,17 @@ function updatePreciseErasePreview(svg: SVGSVGElement, ctx: EraseToolContext): v
 	defs.appendChild(clipPath);
 	preview.appendChild(defs);
 
-	const clippedStrokes = document.createElementNS(SVG_NS, 'g');
-	clippedStrokes.setAttribute('clip-path', `url(#${clipId})`);
-	for (const group of strokeGroups) clippedStrokes.appendChild(group.cloneNode(true));
-	preview.appendChild(clippedStrokes);
+	const cover = document.createElementNS(SVG_NS, 'g');
+	cover.classList.add('ink-precise-erase-preview-cover');
+	cover.setAttribute('clip-path', `url(#${clipId})`);
+	for (const group of strokeGroups) cover.appendChild(group.cloneNode(true));
+	preview.appendChild(cover);
+
+	const fadedStrokes = document.createElementNS(SVG_NS, 'g');
+	fadedStrokes.classList.add('ink-precise-erase-preview-faded');
+	fadedStrokes.setAttribute('clip-path', `url(#${clipId})`);
+	for (const group of strokeGroups) fadedStrokes.appendChild(group.cloneNode(true));
+	preview.appendChild(fadedStrokes);
 	parent.appendChild(preview);
 }
 
